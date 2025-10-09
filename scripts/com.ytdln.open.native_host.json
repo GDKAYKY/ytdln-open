@@ -1,0 +1,9 @@
+{
+  "name": "com.ytdln.open.native_host",
+  "description": "Native host for ytdln-open extension to interact with yt-dlp.",
+  "path": "C:\\path\\to\\your\\repo\\ytdln-open\\scripts\\native_host.py",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://YOUR_EXTENSION_ID_HERE/"
+  ]
+}

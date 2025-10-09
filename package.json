@@ -1,0 +1,15 @@
+{
+  "name": "ytdln-open",
+  "version": "1.0.0",
+  "description": "A desktop app for downloading videos using yt-dlp.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}
