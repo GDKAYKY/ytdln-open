@@ -1,14 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld(
-  'electronAPI',
-  {
-    sendMessage: (channel, data) => ipcRenderer.send(channel, data),
-    onMessage: (channel, func) => {
-      // Deliberately strip event as it includes `sender`
-      ipcRenderer.on(channel, (event, ...args) => func(...args));
-    }
+contextBridge.exposeInMainWorld('electronAPI', {
+  // One-way from renderer to main
+  send: (channel, data) => {
+    ipcRenderer.send(channel, data);
+  },
+  // One-way from main to renderer
+  on: (channel, callback) => {
+    const newCallback = (_, data) => callback(data);
+    ipcRenderer.on(channel, newCallback);
+    // Return a function to remove the listener
+    return () => ipcRenderer.removeListener(channel, newCallback);
   }
-);
+});

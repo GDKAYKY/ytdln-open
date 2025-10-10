@@ -1,17 +1,29 @@
 <!DOCTYPE html>
-<html>
+<lang:html>
 <head>
-  <meta charset="UTF-8">
-  <title>ytdln-open</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <title>YTDLN Open</title>
 </head>
 <body>
-  <h1>Hello from Electron!</h1>
-  <p>Welcome to your new desktop app.</p>
+    <h1>YTDLN Open</h1>
+    
+    <p>
+        <label for="videoUrl">Video URL:</label>
+        <input type="text" id="videoUrl" size="50" placeholder="Cole a URL do vídeo aqui">
+    </p>
 
-  <input type="text" id="url-input" placeholder="Enter video URL">
-  <button id="download-button">Download</button>
-
-  <script src="renderer.js"></script>
+    <p>
+        <input type="checkbox" id="debugMode">
+        <label for="debugMode">Ativar log de depuração</label>
+    </p>
+    
+    <button id="downloadBtn">Download</button>
+    
+    <hr>
+    
+    <h3>Status</h3>
+    <pre id="status" style="background-color: #f4f4f4; border: 1px solid #ddd; padding: 10px; min-height: 100px;"></pre>
+    
+    <script src="renderer.js"></script>
 </body>
 </html>
