@@ -1,16 +1,18 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const chalk = require('chalk');
 const BinaryDownloader = require('./bin-downloader');
 
-// Whitelist de canais IPC permitidos
 const ALLOWED_IPC_CHANNELS = [
   'download-video',
+  'download-video-with-settings',
   'check-binaries-status',
   'download-progress',
   'download-success',
   'download-error',
-  'binaries-status'
+  'binaries-status',
+  'open-downloads-folder'
 ];
 
 // Função para validar URL
@@ -46,7 +48,7 @@ function sanitizeArgs(args) {
   return args.map(arg => {
     if (typeof arg === 'string') {
       // Remover caracteres perigosos mas preservar barras invertidas para caminhos Windows
-      return arg.replace(/[;&|`$(){}[\]]/g, '');
+      return arg.replace(/[;&|`$[\]{}]/g, '');
     }
     return arg;
   });
@@ -125,169 +127,221 @@ function validateIpcChannel(channel) {
   }
 }
 
-// Função para tentar download sem aria2c
-function retryDownloadWithoutAria2c(event, videoUrl, ytdlpPath, ffmpegPath) {
-  const args = [
-    '--progress',
-    '--newline',
-    '-o',
-    path.join(app.getPath('downloads'), '%(title)s.%(ext)s'),
-    '--ffmpeg-location',
-    ffmpegPath,
-    '--merge-output-format', 'mp4',
-    '--no-check-certificate',
-    '--ignore-errors',
-    '--extractor-retries', '3',
-    '--fragment-retries', '5',
-    '--retries', '5',
-    '--socket-timeout', '30',
-    '--concurrent-fragments', '8', // Mais fragmentos quando não usa aria2c
-    videoUrl
-  ];
 
-  const sanitizedArgs = sanitizeArgs(args);
-  const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs);
-
-  // Timeout para operações longas (30 minutos)
-  const timeoutId = setTimeout(() => {
-    if (!ytdlpProcess.killed) {
-      ytdlpProcess.kill('SIGTERM');
-      event.sender.send('download-error', 'Download cancelado por timeout (30 minutos).');
-    }
-  }, 30 * 60 * 1000);
-
-  ytdlpProcess.stdout.on('data', (data) => {
-    const output = data.toString();
-    event.sender.send('download-progress', output);
-  });
-
-  ytdlpProcess.stderr.on('data', (data) => {
-    console.error(`yt-dlp stderr (sem aria2c): ${data}`);
-    event.sender.send('download-error', data.toString());
-  });
-
-  ytdlpProcess.on('close', (code) => {
-    clearTimeout(timeoutId);
-    if (code === 0) {
-      console.log('Download completed successfully (sem aria2c).');
-      event.sender.send('download-success');
-    } else {
-      console.error(`yt-dlp process exited with code ${code} (sem aria2c)`);
-      event.sender.send('download-error', `Download falhou mesmo sem aria2c. Código: ${code}`);
-    }
-  });
+// Função para construir argumentos do yt-dlp baseado nas configurações
+function buildYtdlpArgs(settings, videoUrl, ffmpegPath) {
+  const args = ['--progress', '--newline'];
   
-  ytdlpProcess.on('error', (err) => {
-    clearTimeout(timeoutId);
-    console.error('Failed to start yt-dlp process (sem aria2c).', err);
-    event.sender.send('download-error', `Failed to start process. Error: ${err.message}`);
-  });
+  // Template de saída
+  args.push('-o', path.join(app.getPath('downloads'), '%(title)s.%(ext)s'));
+  
+  // FFmpeg location
+  args.push('--ffmpeg-location', ffmpegPath);
+  
+  // Formato de merge
+  args.push('--merge-output-format', settings.outputFormat);
+  
+  // Qualidade
+  if (settings.quality !== 'best') {
+    if (settings.quality === 'worst') {
+      args.push('-f', 'worst');
+    } else {
+      args.push('-f', `best[height<=${settings.quality.replace('p', '')}]`);
+    }
+  }
+  
+  // Fragmentos simultâneos
+  args.push('--concurrent-fragments', settings.concurrentFragments.toString());
+  
+  // Legendas
+  if (settings.embedSubs) {
+    args.push('--embed-subs');
+  }
+  
+  // Informações do vídeo
+  if (settings.writeInfoJson) {
+    args.push('--write-info-json');
+  }
+  
+  // Thumbnail
+  if (settings.writeThumbnail) {
+    args.push('--write-thumbnail');
+  }
+  
+  // Descrição
+  if (settings.writeDescription) {
+    args.push('--write-description');
+  }
+  
+  // User Agent
+  if (settings.userAgent) {
+    args.push('--user-agent', settings.userAgent);
+  }
+  
+  // Referer
+  if (settings.referer) {
+    args.push('--referer', settings.referer);
+  }
+  
+  // Timeouts e retries
+  args.push('--socket-timeout', settings.socketTimeout.toString());
+  args.push('--retries', settings.retries.toString());
+  args.push('--fragment-retries', settings.fragmentRetries.toString());
+  args.push('--extractor-retries', settings.extractorRetries.toString());
+  
+  // Flags booleanas
+  if (settings.noCheckCertificate) {
+    args.push('--no-check-certificate');
+  }
+  
+  if (settings.ignoreErrors) {
+    args.push('--ignore-errors');
+  }
+  
+  // URL do vídeo
+  args.push(videoUrl);
+  
+  return args;
 }
 
-// Listen for a 'download-video' message from the renderer process
-ipcMain.on('download-video', async (event, videoUrl) => {
+// Listen for a 'download-video-with-settings' message from the renderer process
+ipcMain.on('download-video-with-settings', async (event, videoUrl, settings) => {
   try {
-    // Validar canal IPC
-    validateIpcChannel('download-video');
-    
-    // Validar entrada
+    validateIpcChannel('download-video-with-settings');
+
     if (!videoUrl || typeof videoUrl !== 'string') {
-      event.sender.send('download-error', 'URL do vídeo é obrigatória.');
-      return;
+      return event.sender.send('download-error', 'URL do vídeo é obrigatória.');
     }
-    
-    // Validar URL
     if (!isValidUrl(videoUrl)) {
-      event.sender.send('download-error', 'URL inválida ou domínio não suportado.');
-      return;
+      return event.sender.send('download-error', 'URL inválida ou domínio não suportado.');
     }
-    
-    // Verificar se os binários estão disponíveis
     if (!binaryPaths) {
-      event.sender.send('download-error', 'Binários não inicializados. Reinicie a aplicação.');
-      return;
+      return event.sender.send('download-error', 'Binários não inicializados. Reinicie a aplicação.');
     }
 
-    const { ytdlp: ytdlpPath, aria2c: aria2cPath, ffmpeg: ffmpegPath } = binaryPaths;
-
-    // Verificar se os binários existem
+    const { ytdlp: ytdlpPath, ffmpeg: ffmpegPath } = binaryPaths;
     const fs = require('fs');
-    if (!fs.existsSync(ytdlpPath) || !fs.existsSync(aria2cPath) || !fs.existsSync(ffmpegPath)) {
-      event.sender.send('download-error', 'Um ou mais binários não foram encontrados.');
-      return;
+    if (!fs.existsSync(ytdlpPath) || !fs.existsSync(ffmpegPath)) {
+      return event.sender.send('download-error', 'yt-dlp ou ffmpeg não foram encontrados.');
     }
 
-    const args = [
-      '--progress',
-      '--newline',
-      '-o',
-      path.join(app.getPath('downloads'), '%(title)s.%(ext)s'), // Save to user's Downloads folder
-      '--downloader',
-      aria2cPath,
-      '--downloader-args', 'aria2c:\'--max-connection-per-server=4\' \'--min-split-size=1M\' \'--split=8\' \'--retry-wait=2\' \'--max-tries=5\' \'--timeout=30\' \'--connect-timeout=10\' \'--disable-ipv6=true\' \'--file-allocation=none\' \'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\' \'--referer=https://www.youtube.com/\'',
-      '--ffmpeg-location',
-      ffmpegPath,
-      '--merge-output-format', 'mp4', // Forçar formato de saída
-      '--no-check-certificate', // Evitar problemas de certificado
-      '--ignore-errors', // Continuar mesmo com erros menores
-      '--extractor-retries', '3', // Tentar extrair informações 3 vezes
-      '--fragment-retries', '5', // Tentar baixar fragmentos 5 vezes
-      '--retries', '5', // Tentar download geral 5 vezes
-      '--socket-timeout', '30', // Timeout de socket 30 segundos
-      '--concurrent-fragments', '4', // Fragmentos simultâneos (compatível com aria2c)
-      videoUrl
-    ];
+    // Função para executar o download com os argumentos finais
+    const runDownload = (downloadArgs) => {
+      const sanitizedArgs = sanitizeArgs(downloadArgs);
+      const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs);
 
-    // Sanitizar argumentos
-    const sanitizedArgs = sanitizeArgs(args);
-    const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs);
+      const timeoutId = setTimeout(() => {
+        if (!ytdlpProcess.killed) {
+          ytdlpProcess.kill('SIGTERM');
+          event.sender.send('download-error', 'Download cancelado por timeout (30 minutos).');
+        }
+      }, 30 * 60 * 1000);
 
-    // Timeout para operações longas (30 minutos)
-    const timeoutId = setTimeout(() => {
-      if (!ytdlpProcess.killed) {
-        ytdlpProcess.kill('SIGTERM');
-        event.sender.send('download-error', 'Download cancelado por timeout (30 minutos).');
-      }
-    }, 30 * 60 * 1000);
-
-    ytdlpProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      // Send progress updates to the renderer
-      event.sender.send('download-progress', output);
-    });
-
-    ytdlpProcess.stderr.on('data', (data) => {
-      // Handle errors, could also send to renderer
-      console.error(`yt-dlp stderr: ${data}`);
-      event.sender.send('download-error', data.toString());
-    });
-
-    ytdlpProcess.on('close', (code) => {
-      clearTimeout(timeoutId);
-      if (code === 0) {
-        console.log('Download completed successfully.');
-        event.sender.send('download-success');
-      } else {
-        console.error(`yt-dlp process exited with code ${code}`);
-        // Tentar novamente sem aria2c se falhou
-        if (code === 1) {
-          console.log('Tentando download sem aria2c...');
-          retryDownloadWithoutAria2c(event, videoUrl, ytdlpPath, ffmpegPath);
+      ytdlpProcess.stdout.on('data', (data) => {
+        event.sender.send('download-progress', data.toString());
+      });
+      ytdlpProcess.stderr.on('data', (data) => {
+        console.error(`yt-dlp stderr: ${data}`);
+        event.sender.send('download-error', data.toString());
+      });
+      ytdlpProcess.on('close', (code) => {
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          console.log('Download completed successfully.');
+          event.sender.send('download-success');
         } else {
+          console.error(`yt-dlp process exited with code ${code}`);
           event.sender.send('download-error', `Process exited with code ${code}`);
         }
+      });
+      ytdlpProcess.on('error', (err) => {
+        clearTimeout(timeoutId);
+        console.error('Failed to start yt-dlp process.', err);
+        event.sender.send('download-error', `Failed to start process. Error: ${err.message}`);
+      });
+    };
+
+    // Etapa 1: Obter metadados do vídeo
+    const infoArgs = ['--dump-json', videoUrl];
+    const ytdlpInfoProcess = spawn(ytdlpPath, sanitizeArgs(infoArgs));
+    let infoJson = '';
+    ytdlpInfoProcess.stdout.on('data', (data) => {
+      infoJson += data.toString();
+    });
+    ytdlpInfoProcess.stderr.on('data', (data) => {
+      console.error(`yt-dlp (info) stderr: ${data}`);
+    });
+    ytdlpInfoProcess.on('close', (code) => {
+      if (code !== 0) {
+        return event.sender.send('download-error', 'Falha ao obter informações do vídeo.');
+      }
+      
+      try {
+        const info = JSON.parse(infoJson);
+        const acodec = info.acodec || '';
+
+        // Etapa 2: Construir argumentos e decidir sobre o re-encode
+        const args = buildYtdlpArgs(settings, videoUrl, ffmpegPath);
+        
+        const targetAudioCodec = settings.audioFormat;
+        
+        if (targetAudioCodec !== 'best') {
+            const codecMap = {
+                'mp3': { check: 'mp3', ffmpeg: 'libmp3lame' },
+                'aac': { check: 'mp4a', ffmpeg: 'aac' },
+                'opus': { check: 'opus', ffmpeg: 'libopus' }
+            };
+
+            const target = codecMap[targetAudioCodec];
+
+            // Se o codec de áudio de destino for especificado e não corresponder ao codec de origem,
+            // copia o vídeo e re-encoda apenas o áudio.
+            if (target && !acodec.startsWith(target.check)) {
+                console.log(`Codec de áudio detectado: ${acodec}. Re-encodando para ${targetAudioCodec.toUpperCase()}.`);
+                args.push('--postprocessor-args', `ffmpeg:-c:v copy -c:a ${target.ffmpeg}`);
+            } else {
+                console.log(`Codec de áudio já é compatível (${acodec}) ou formato de destino é 'best'. Remuxing.`);
+            }
+        } else {
+            console.log(`Formato de áudio de destino é 'best'. Remuxing.`);
+        }
+        
+        // Etapa 3: Iniciar o download
+        runDownload(args);
+
+      } catch (e) {
+        console.error('Erro ao analisar JSON do vídeo:', e);
+        event.sender.send('download-error', 'Falha ao analisar informações do vídeo.');
       }
     });
-    
-    ytdlpProcess.on('error', (err) => {
-      clearTimeout(timeoutId);
-      console.error('Failed to start yt-dlp process.', err);
-      event.sender.send('download-error', `Failed to start process. Error: ${err.message}`);
-    });
+
   } catch (error) {
     console.error('Erro no download:', error);
     event.sender.send('download-error', `Erro no download: ${error.message}`);
   }
+});
+
+// Listen for a 'download-video' message from the renderer process
+ipcMain.on('download-video', async (event, videoUrl) => {
+  // Redirect to the main download handler with default settings
+  const defaultSettings = {
+    outputFormat: 'mp4',
+    quality: 'best',
+    concurrentFragments: 8,
+    embedSubs: false,
+    writeInfoJson: false,
+    writeThumbnail: false,
+    writeDescription: false,
+    userAgent: '',
+    referer: '',
+    socketTimeout: 30,
+    retries: 5,
+    fragmentRetries: 5,
+    extractorRetries: 3,
+    noCheckCertificate: true,
+    ignoreErrors: true,
+  };
+  ipcMain.emit('download-video-with-settings', event, videoUrl, defaultSettings);
 });
 
 // Handler para verificar status dos binários
@@ -317,5 +371,19 @@ ipcMain.on('check-binaries-status', (event) => {
       status: 'error',
       message: 'Erro interno ao verificar binários'
     });
+  }
+});
+
+// Handler para abrir a pasta de downloads
+ipcMain.on('open-downloads-folder', async (event) => {
+  try {
+    validateIpcChannel('open-downloads-folder');
+    const open = (await import('open')).default;
+    const downloadsPath = app.getPath('downloads');
+    await open(downloadsPath);
+  } catch (error) {
+    console.error('Erro ao abrir a pasta de downloads:', error);
+    // Opcional: notificar o renderer sobre o erro
+    event.sender.send('download-error', 'Não foi possível abrir a pasta de downloads.');
   }
 });

@@ -1,13 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Whitelist de canais IPC permitidos (mesma lista do main.js)
 const ALLOWED_IPC_CHANNELS = [
   'download-video',
+  'download-video-with-settings',
   'check-binaries-status',
   'download-progress',
   'download-success',
   'download-error',
-  'binaries-status'
+  'binaries-status',
+  'open-downloads-folder'
 ];
 
 // Função para validar canal IPC
@@ -33,7 +34,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // Métodos específicos para facilitar o uso
   downloadVideo: (url) => ipcRenderer.send('download-video', url),
+  downloadVideoWithSettings: (url, settings) => ipcRenderer.send('download-video-with-settings', url, settings),
   checkBinariesStatus: () => ipcRenderer.send('check-binaries-status'),
+  openDownloadsFolder: () => ipcRenderer.send('open-downloads-folder'),
   onDownloadProgress: (callback) => {
     const newCallback = (_, data) => callback(data);
     ipcRenderer.on('download-progress', newCallback);
