@@ -6,6 +6,7 @@ on:
       - master
       - develop
       - 'releases/**'
+      - 'feature/**'
   pull_request:
       types: [opened, synchronize, reopened]
 
