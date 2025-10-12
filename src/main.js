@@ -1,6 +1,49 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const chalk = require('chalk');
+const BinaryDownloader = require('./bin-downloader');
+
+const ALLOWED_IPC_CHANNELS = [
+  'download-video',
+  'download-video-with-settings',
+  'check-binaries-status',
+  'download-progress',
+  'download-success',
+  'download-error',
+  'binaries-status',
+  'open-downloads-folder'
+];
+
+// Função para validar URL
+function isValidUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    // Permitir apenas HTTPS e HTTP
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      return false;
+    }
+    const hostname = urlObj.hostname.toLowerCase();
+    return true
+  } catch {
+    return false;
+  }
+}
+
+// Função para sanitizar argumentos do spawn
+function sanitizeArgs(args) {
+  return args.map(arg => {
+    if (typeof arg === 'string') {
+      // Remover caracteres perigosos mas preservar barras invertidas para caminhos Windows
+      return arg.replace(/[;&|`$[\]{}]/g, '');
+    }
+    return arg;
+  });
+}
+
+// Instância do downloader de binários
+let binaryDownloader = null;
+let binaryPaths = null;
 
 // Helper function to get the path to the extra resources,
 // works for both development and packaged apps.
@@ -13,26 +56,41 @@ function getExtraResourcesPath() {
   return path.join(__dirname, '..', 'bin');
 }
 
+// Função para inicializar e verificar binários
+async function initializeBinaries() {
+  try {
+    binaryDownloader = new BinaryDownloader();
+    binaryPaths = await binaryDownloader.checkAndDownloadBinaries();
+    console.log('Binários inicializados:', binaryPaths);
+    return binaryPaths;
+  } catch (error) {
+    console.error('Erro ao inicializar binários:', error);
+    throw error;
+  }
+}
+
 function createWindow () {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // It's crucial to not enable nodeIntegration and to use a preload script.
       nodeIntegration: false,
       contextIsolation: true,
     }
   });
 
   mainWindow.loadFile('src/index.html');
-
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools();
 }
 
-app.whenReady().then(() => {
-  createWindow();
+app.whenReady().then(async () => {
+  try {
+    await initializeBinaries();
+    createWindow();
+  } catch (error) {
+    console.error('Erro ao inicializar aplicação:', error);
+    createWindow();
+  }
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -43,53 +101,269 @@ app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Listen for a 'download-video' message from the renderer process
-ipcMain.on('download-video', (event, videoUrl) => {
-  const resourcesPath = getExtraResourcesPath();
-  // Construct paths assuming extraction from zips. These may need adjustment
-  // based on the actual folder structure inside the zips.
-  const ytdlpPath = path.join(resourcesPath, 'yt-dlp.exe');
-  const aria2cPath = path.join(resourcesPath, 'aria2-1.37.0-win-64bit-build1', 'aria2c.exe');
-  const ffmpegPath = path.join(resourcesPath, 'ffmpeg', 'bin', 'ffmpeg.exe');
+// Middleware para validar canais IPC
+function validateIpcChannel(channel) {
+  if (!ALLOWED_IPC_CHANNELS.includes(channel)) {
+    throw new Error(`Canal IPC não permitido: ${channel}`);
+  }
+}
 
-  const args = [
-    '--progress',
-    '--newline',
-    '-o',
-    path.join(app.getPath('downloads'), '%(title)s.%(ext)s'), // Save to user's Downloads folder
-    '--downloader',
-    aria2cPath,
-    '--ffmpeg-location',
-    ffmpegPath,
-    videoUrl
-  ];
 
-  const ytdlpProcess = spawn(ytdlpPath, args);
-
-  ytdlpProcess.stdout.on('data', (data) => {
-    const output = data.toString();
-    // Send progress updates to the renderer
-    event.sender.send('download-progress', output);
-  });
-
-  ytdlpProcess.stderr.on('data', (data) => {
-    // Handle errors, could also send to renderer
-    console.error(`yt-dlp stderr: ${data}`);
-    event.sender.send('download-error', data.toString());
-  });
-
-  ytdlpProcess.on('close', (code) => {
-    if (code === 0) {
-      console.log('Download completed successfully.');
-      event.sender.send('download-success');
-    } else {
-      console.error(`yt-dlp process exited with code ${code}`);
-      event.sender.send('download-error', `Process exited with code ${code}`);
-    }
-  });
+// Função para construir argumentos do yt-dlp baseado nas configurações
+function buildYtdlpArgs(settings, videoUrl, ffmpegPath) {
+  const args = ['--progress', '--newline'];
   
-  ytdlpProcess.on('error', (err) => {
-    console.error('Failed to start yt-dlp process.', err);
-    event.sender.send('download-error', `Failed to start process. Check if yt-dlp.exe and aria2c.exe are in the 'bin' folder. Error: ${err.message}`);
-  });
+  // Template de saída
+  args.push('-o', path.join(app.getPath('downloads'), '%(title)s.%(ext)s'));
+  
+  // FFmpeg location
+  args.push('--ffmpeg-location', ffmpegPath);
+  
+  // Formato de merge
+  args.push('--merge-output-format', settings.outputFormat);
+  
+  // Qualidade
+  if (settings.quality !== 'best') {
+    if (settings.quality === 'worst') {
+      args.push('-f', 'worst');
+    } else {
+      args.push('-f', `best[height<=${settings.quality.replace('p', '')}]`);
+    }
+  }
+  
+  // Fragmentos simultâneos
+  args.push('--concurrent-fragments', settings.concurrentFragments.toString());
+  
+  // Legendas
+  if (settings.embedSubs) {
+    args.push('--embed-subs');
+  }
+  
+  // Informações do vídeo
+  if (settings.writeInfoJson) {
+    args.push('--write-info-json');
+  }
+  
+  // Thumbnail
+  if (settings.writeThumbnail) {
+    args.push('--write-thumbnail');
+  }
+  
+  // Descrição
+  if (settings.writeDescription) {
+    args.push('--write-description');
+  }
+  
+  // User Agent
+  if (settings.userAgent) {
+    args.push('--user-agent', settings.userAgent);
+  }
+  
+  // Referer
+  if (settings.referer) {
+    args.push('--referer', settings.referer);
+  }
+  
+  // Timeouts e retries
+  args.push('--socket-timeout', settings.socketTimeout.toString());
+  args.push('--retries', settings.retries.toString());
+  args.push('--fragment-retries', settings.fragmentRetries.toString());
+  args.push('--extractor-retries', settings.extractorRetries.toString());
+  
+  // Flags booleanas
+  if (settings.noCheckCertificate) {
+    args.push('--no-check-certificate');
+  }
+  
+  if (settings.ignoreErrors) {
+    args.push('--ignore-errors');
+  }
+  
+  // URL do vídeo
+  args.push(videoUrl);
+  
+  return args;
+}
+
+// Listen for a 'download-video-with-settings' message from the renderer process
+ipcMain.on('download-video-with-settings', async (event, videoUrl, settings) => {
+  try {
+    validateIpcChannel('download-video-with-settings');
+
+    if (!videoUrl || typeof videoUrl !== 'string') {
+      return event.sender.send('download-error', 'URL do vídeo é obrigatória.');
+    }
+    if (!isValidUrl(videoUrl)) {
+      return event.sender.send('download-error', 'URL inválida ou domínio não suportado.');
+    }
+    if (!binaryPaths) {
+      return event.sender.send('download-error', 'Binários não inicializados. Reinicie a aplicação.');
+    }
+
+    const { ytdlp: ytdlpPath, ffmpeg: ffmpegPath } = binaryPaths;
+    const fs = require('fs');
+    if (!fs.existsSync(ytdlpPath) || !fs.existsSync(ffmpegPath)) {
+      return event.sender.send('download-error', 'yt-dlp ou ffmpeg não foram encontrados.');
+    }
+
+    const runDownload = (downloadArgs) => {
+      const sanitizedArgs = sanitizeArgs(downloadArgs);
+      const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs);
+
+      const timeoutId = setTimeout(() => {
+        if (!ytdlpProcess.killed) {
+          ytdlpProcess.kill('SIGTERM');
+          event.sender.send('download-error', 'Download cancelado por timeout (30 minutos).');
+        }
+      }, 30 * 60 * 1000);
+
+      ytdlpProcess.stdout.on('data', (data) => {
+        event.sender.send('download-progress', data.toString());
+      });
+      ytdlpProcess.stderr.on('data', (data) => {
+        console.error(`yt-dlp stderr: ${data}`);
+        event.sender.send('download-error', data.toString());
+      });
+      ytdlpProcess.on('close', (code) => {
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          console.log('Download completed successfully.');
+          event.sender.send('download-success');
+        } else {
+          console.error(`yt-dlp process exited with code ${code}`);
+          event.sender.send('download-error', `Process exited with code ${code}`);
+        }
+      });
+      ytdlpProcess.on('error', (err) => {
+        clearTimeout(timeoutId);
+        console.error('Failed to start yt-dlp process.', err);
+        event.sender.send('download-error', `Failed to start process. Error: ${err.message}`);
+      });
+    };
+
+    // Etapa 1: Obter metadados do vídeo
+    const infoArgs = ['--dump-json', videoUrl];
+    const ytdlpInfoProcess = spawn(ytdlpPath, sanitizeArgs(infoArgs));
+    let infoJson = '';
+    ytdlpInfoProcess.stdout.on('data', (data) => {
+      infoJson += data.toString();
+    });
+    ytdlpInfoProcess.stderr.on('data', (data) => {
+      console.error(`yt-dlp (info) stderr: ${data}`);
+    });
+    ytdlpInfoProcess.on('close', (code) => {
+      if (code !== 0) {
+        return event.sender.send('download-error', 'Falha ao obter informações do vídeo.');
+      }
+      
+      try {
+        const info = JSON.parse(infoJson);
+        const acodec = info.acodec || '';
+
+        // Etapa 2: Construir argumentos e decidir sobre o re-encode
+        const args = buildYtdlpArgs(settings, videoUrl, ffmpegPath);
+        
+        const targetAudioCodec = settings.audioFormat;
+        
+        if (targetAudioCodec !== 'best') {
+            const codecMap = {
+                'mp3': { check: 'mp3', ffmpeg: 'libmp3lame' },
+                'aac': { check: 'mp4a', ffmpeg: 'aac' },
+                'opus': { check: 'opus', ffmpeg: 'libopus' }
+            };
+
+            const target = codecMap[targetAudioCodec];
+
+            // Se o codec de áudio de destino for especificado e não corresponder ao codec de origem,
+            // copia o vídeo e re-encoda apenas o áudio.
+            if (target && !acodec.startsWith(target.check)) {
+                console.log(`Codec de áudio detectado: ${acodec}. Re-encodando para ${targetAudioCodec.toUpperCase()}.`);
+                args.push('--postprocessor-args', `ffmpeg:-c:v copy -c:a ${target.ffmpeg}`);
+            } else {
+                console.log(`Codec de áudio já é compatível (${acodec}) ou formato de destino é 'best'. Remuxing.`);
+            }
+        } else {
+            console.log(`Formato de áudio de destino é 'best'. Remuxing.`);
+        }
+        
+        // Etapa 3: Iniciar o download
+        runDownload(args);
+
+      } catch (e) {
+        console.error('Erro ao analisar JSON do vídeo:', e);
+        event.sender.send('download-error', 'Falha ao analisar informações do vídeo.');
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro no download:', error);
+    event.sender.send('download-error', `Erro no download: ${error.message}`);
+  }
+});
+
+// Listen for a 'download-video' message from the renderer process
+ipcMain.on('download-video', async (event, videoUrl) => {
+  // Redirect to the main download handler with default settings
+  const defaultSettings = {
+    outputFormat: 'mp4',
+    quality: 'best',
+    concurrentFragments: 8,
+    embedSubs: false,
+    writeInfoJson: false,
+    writeThumbnail: false,
+    writeDescription: false,
+    userAgent: '',
+    referer: '',
+    socketTimeout: 30,
+    retries: 5,
+    fragmentRetries: 5,
+    extractorRetries: 3,
+    noCheckCertificate: true,
+    ignoreErrors: true,
+  };
+  ipcMain.emit('download-video-with-settings', event, videoUrl, defaultSettings);
+});
+
+// Handler para verificar status dos binários
+ipcMain.on('check-binaries-status', (event) => {
+  try {
+    // Validar canal IPC
+    validateIpcChannel('check-binaries-status');
+    
+    if (binaryPaths) {
+      const appMode = binaryDownloader ? binaryDownloader.getAppMode() : null;
+      event.sender.send('binaries-status', {
+        status: 'ready',
+        paths: binaryPaths,
+        platform: process.platform,
+        arch: process.arch,
+        appMode: appMode
+      });
+    } else {
+      event.sender.send('binaries-status', {
+        status: 'not-ready',
+        message: 'Binários ainda não foram inicializados'
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao verificar status dos binários:', error);
+    event.sender.send('binaries-status', {
+      status: 'error',
+      message: 'Erro interno ao verificar binários'
+    });
+  }
+});
+
+// Handler para abrir a pasta de downloads
+ipcMain.on('open-downloads-folder', async (event) => {
+  try {
+    validateIpcChannel('open-downloads-folder');
+    const open = (await import('open')).default;
+    const downloadsPath = app.getPath('downloads');
+    await open(downloadsPath);
+  } catch (error) {
+    console.error('Erro ao abrir a pasta de downloads:', error);
+    // Opcional: notificar o renderer sobre o erro
+    event.sender.send('download-error', 'Não foi possível abrir a pasta de downloads.');
+  }
 });

@@ -4,33 +4,24 @@
   "description": "A desktop app for downloading videos using yt-dlp.",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "build": {
-    "productName": "YTDLN Open",
-    "appId": "com.ytdln.open",
-    "extraResources": [
-      {
-        "from": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
-        "to": "bin/yt-dlp.exe"
-      },
-      {
-        "from": "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip",
-        "to": "bin/aria2c.zip"
-      },
-      {
-        "from": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
-        "to": "bin/ffmpeg.zip"
-      }
-    ]
+    "start": "electron-forge start",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
   },
   "keywords": [],
-  "author": "",
+  "author": "YTDLN Open",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^28.3.3",
-    "electron-builder": "^26.0.12"
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "electron": "^28.3.3"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "open": "^10.2.0"
   }
 }
