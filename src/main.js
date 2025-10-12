@@ -23,21 +23,8 @@ function isValidUrl(url) {
     if (!['http:', 'https:'].includes(urlObj.protocol)) {
       return false;
     }
-    // Lista de domínios permitidos (YouTube, Vimeo, etc.)
-    const allowedDomains = [
-      'youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com',
-      'vimeo.com', 'www.vimeo.com', 'player.vimeo.com',
-      'dailymotion.com', 'www.dailymotion.com',
-      'twitch.tv', 'www.twitch.tv', 'clips.twitch.tv',
-      'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com',
-      'instagram.com', 'www.instagram.com',
-      'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com'
-    ];
-    
     const hostname = urlObj.hostname.toLowerCase();
-    return allowedDomains.some(domain => 
-      hostname === domain || hostname.endsWith('.' + domain)
-    );
+    return true
   } catch {
     return false;
   }
@@ -88,26 +75,20 @@ function createWindow () {
     height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // It's crucial to not enable nodeIntegration and to use a preload script.
       nodeIntegration: false,
       contextIsolation: true,
     }
   });
 
   mainWindow.loadFile('src/index.html');
-
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(async () => {
   try {
-    // Inicializar binários antes de criar a janela
     await initializeBinaries();
     createWindow();
   } catch (error) {
     console.error('Erro ao inicializar aplicação:', error);
-    // Criar janela mesmo com erro para mostrar mensagem ao usuário
     createWindow();
   }
 
@@ -225,7 +206,6 @@ ipcMain.on('download-video-with-settings', async (event, videoUrl, settings) => 
       return event.sender.send('download-error', 'yt-dlp ou ffmpeg não foram encontrados.');
     }
 
-    // Função para executar o download com os argumentos finais
     const runDownload = (downloadArgs) => {
       const sanitizedArgs = sanitizeArgs(downloadArgs);
       const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs);

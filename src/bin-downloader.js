@@ -7,7 +7,7 @@ const { execSync } = require('child_process');
 function checkDiskSpace(dirPath) {
   try {
     if (process.platform === 'win32') {
-      const result = execSync(`powershell -command "Get-WmiObject -Class Win32_LogicalDisk -Filter 'DeviceID=\\'${dirPath.charAt(0)}:\\'' | Select-Object -ExpandProperty FreeSpace"`, { encoding: 'utf8' });
+      const result = execSync(`powershell -command "Get-WmiObject -Class Win32_LogicalDisk -Filter 'DeviceID=\'${dirPath.charAt(0)}:\'' | Select-Object -ExpandProperty FreeSpace"`, { encoding: 'utf8' });
       return parseInt(result.trim());
     } else {
       const result = execSync(`df -k '${dirPath}' | tail -1 | awk '{print $4}'`, { encoding: 'utf8' });
