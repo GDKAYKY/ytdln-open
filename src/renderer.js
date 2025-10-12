@@ -3,6 +3,8 @@ const downloadBtn = document.getElementById('downloadBtn');
 const statusDiv = document.getElementById('status');
 const debugModeCheckbox = document.getElementById('debugMode');
 const openFolderBtn = document.getElementById('openFolderBtn');
+const progressText = document.getElementById('progressText');
+const toastContainer = document.querySelector('.toast-container');
 
 // Elementos do modal de configurações
 const settingsBtn = document.getElementById('settingsBtn');
@@ -258,12 +260,23 @@ openFolderBtn.addEventListener('click', () => {
 // Listen for download progress updates from the main process
 window.electronAPI.onDownloadProgress((data) => {
   updateStatus(data, true); // Append para debug, sobrescrever para normal
+
+  const progressMatch = data.match(/(\d+\.\d+)%/);
+  if (progressMatch && progressMatch[1]) {
+    progressText.textContent = `${Math.floor(parseFloat(progressMatch[1]))}%`;
+  }
 });
 
 // Listen for download success message
 window.electronAPI.onDownloadSuccess(() => {
   updateStatus('\n\nDownload concluído com sucesso!', true);
   openFolderBtn.style.display = 'block';
+  progressText.textContent = '100%';
+
+  toastContainer.style.opacity = 1;
+  setTimeout(() => {
+    toastContainer.style.opacity = 0;
+  }, 4000);
 });
 
 // Listen for download error message
