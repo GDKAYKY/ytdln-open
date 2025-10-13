@@ -283,3 +283,274 @@ window.electronAPI.onDownloadSuccess(() => {
 window.electronAPI.onDownloadError((errorMessage) => {
   updateStatus(`\n\nERRO: ${errorMessage}`, true);
 });
+
+// Content Loader Functions
+function showContentLoader() {
+  const contentLoader = document.getElementById('contentLoader');
+  const noDownloadsMessage = document.querySelector('.no-downloads-message');
+  
+  if (noDownloadsMessage) noDownloadsMessage.style.display = 'none';
+  if (contentLoader) contentLoader.style.display = 'flex';
+}
+
+function hideContentLoader() {
+  const contentLoader = document.getElementById('contentLoader');
+  const noDownloadsMessage = document.querySelector('.no-downloads-message');
+  
+  if (contentLoader && noDownloadsMessage) {
+    contentLoader.style.display = 'none';
+    noDownloadsMessage.style.display = 'flex';
+  }
+}
+
+// Test function to demonstrate the loader (can be called from browser console)
+window.testLoader = function() {
+  showContentLoader();
+  setTimeout(() => {
+    hideContentLoader();
+  }, 5000);
+};
+
+// Test function to refresh downloaded files (can be called from browser console)
+window.refreshDownloads = function() {
+  loadDownloadedFiles();
+};
+
+// Test function to demonstrate cascade animation (can be called from browser console)
+window.testCascadeAnimation = function() {
+  const testFiles = [
+    {
+      id: 'test1',
+      title: 'Test Video 1',
+      fileName: 'test_video_1.mp4',
+      fileSize: 1024 * 1024 * 50, // 50MB
+      duration: 180, // 3 minutes
+      format: 'MP4',
+      downloadDate: new Date().toISOString()
+    },
+    {
+      id: 'test2',
+      title: 'Test Video 2',
+      fileName: 'test_video_2.mp4',
+      fileSize: 1024 * 1024 * 75, // 75MB
+      duration: 240, // 4 minutes
+      format: 'MP4',
+      downloadDate: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
+    },
+    {
+      id: 'test3',
+      title: 'Test Video 3',
+      fileName: 'test_video_3.mp4',
+      fileSize: 1024 * 1024 * 120, // 120MB
+      duration: 300, // 5 minutes
+      format: 'MP4',
+      downloadDate: new Date(Date.now() - 7200000).toISOString() // 2 hours ago
+    }
+  ];
+  
+  displayDownloadedFiles(testFiles);
+};
+
+// Downloaded Files Management
+let downloadedFilesList = [];
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatDuration(seconds) {
+  if (!seconds || seconds === 0) return '';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  } else {
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  }
+}
+
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffHours < 1) {
+    return 'Just now';
+  } else if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  } else if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  } else {
+    return date.toLocaleDateString();
+  }
+}
+
+function createDownloadItemHTML(file, isNewDownload = false) {
+  const fileSize = formatFileSize(file.fileSize);
+  const duration = formatDuration(file.duration);
+  const timestamp = formatDate(file.downloadDate);
+  const animationClass = isNewDownload ? 'new-download' : '';
+  
+  return `
+    <div class="download-item ${animationClass}" data-file-id="${file.id}">
+      <div class="download-item-content">
+        <div class="file-thumbnail">
+          ${file.thumbnail ? `<img src="${file.thumbnail}" alt="Thumbnail" />` : ''}
+        </div>
+        <div class="file-info-container">
+          <div class="file-title">${file.title}</div>
+          <div class="file-path">${file.fileName}</div>
+          <div class="file-details-row">
+            ${fileSize ? `<span class="file-size">${fileSize}</span>` : ''}
+            ${duration ? `<span class="file-duration">${duration}</span>` : ''}
+            <span class="file-format">${file.format}</span>
+          </div>
+        </div>
+        <div class="file-actions">
+          <div class="action-buttons">
+            <svg class="file-icon play-icon" viewBox="0 0 24 24" fill="none" data-action="play" title="Open file">
+              <path d="M8 5V19L19 12L8 5Z" stroke="#E3E3E3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg class="file-icon delete-icon" viewBox="0 0 24 24" fill="none" data-action="delete" title="Delete file">
+              <path d="M3 6H5H21" stroke="#E3E3E3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="#E3E3E3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="file-timestamp">${timestamp}</div>
+        </div>
+      </div>
+      <div class="separator-line"></div>
+    </div>
+  `;
+}
+
+function displayDownloadedFiles(files) {
+  const downloadsContainer = document.getElementById('downloadsContainer');
+  const noDownloadsMessage = document.querySelector('.no-downloads-message');
+  const contentLoader = document.getElementById('contentLoader');
+  
+  if (!files || files.length === 0) {
+    if (noDownloadsMessage) noDownloadsMessage.style.display = 'flex';
+    if (contentLoader) contentLoader.style.display = 'none';
+    return;
+  }
+  
+  if (noDownloadsMessage) noDownloadsMessage.style.display = 'none';
+  if (contentLoader) contentLoader.style.display = 'none';
+  
+  // Clear container first
+  downloadsContainer.innerHTML = '';
+  
+  // Add files with cascade animation
+  files.forEach((file, index) => {
+    setTimeout(() => {
+      const fileHTML = createDownloadItemHTML(file);
+      downloadsContainer.insertAdjacentHTML('beforeend', fileHTML);
+      
+      // Add event listeners for the newly added item
+      addFileActionListeners();
+    }, index * 100); // 100ms delay between each item
+  });
+}
+
+function addFileActionListeners() {
+  const playIcons = document.querySelectorAll('.play-icon[data-action="play"]');
+  const deleteIcons = document.querySelectorAll('.delete-icon[data-action="delete"]');
+  
+  playIcons.forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      const fileId = e.target.closest('.download-item').dataset.fileId;
+      const file = downloadedFilesList.find(f => f.id == fileId);
+      if (file) {
+        window.electronAPI.openFileLocation(file.id);
+      }
+    });
+  });
+  
+  deleteIcons.forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      const fileId = e.target.closest('.download-item').dataset.fileId;
+      deleteFile(fileId);
+    });
+  });
+}
+
+function loadDownloadedFiles() {
+  showContentLoader();
+  window.electronAPI.getDownloadedFiles();
+}
+
+function deleteFile(fileId) {
+  if (confirm('Are you sure you want to delete this file?')) {
+    window.electronAPI.deleteDownloadedFile(fileId);
+  }
+}
+
+// Load downloaded files on page load
+document.addEventListener('DOMContentLoaded', () => {
+  loadDownloadedFiles();
+});
+
+// Listen for downloaded files list
+window.electronAPI.onDownloadedFilesList((files) => {
+  downloadedFilesList = files;
+  hideContentLoader();
+  displayDownloadedFiles(files);
+});
+
+// Listen for file deleted
+window.electronAPI.onFileDeleted((fileId) => {
+  downloadedFilesList = downloadedFilesList.filter(f => f.id !== fileId);
+  const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
+  if (fileElement) {
+    fileElement.remove();
+  }
+  
+  // Show no downloads message if no files left
+  if (downloadedFilesList.length === 0) {
+    const noDownloadsMessage = document.querySelector('.no-downloads-message');
+    if (noDownloadsMessage) noDownloadsMessage.style.display = 'flex';
+  }
+});
+
+// Listen for download success to refresh files list
+window.electronAPI.onDownloadSuccess(() => {
+  // Refresh the downloaded files list after a successful download
+  setTimeout(() => {
+    loadDownloadedFiles();
+  }, 1000);
+});
+
+// Function to add a single new download with cascade animation
+function addNewDownloadFile(file) {
+  const downloadsContainer = document.getElementById('downloadsContainer');
+  const noDownloadsMessage = document.querySelector('.no-downloads-message');
+  
+  // Hide no downloads message if it's showing
+  if (noDownloadsMessage && noDownloadsMessage.style.display === 'flex') {
+    noDownloadsMessage.style.display = 'none';
+  }
+  
+  // Add the new file at the top with special animation
+  const fileHTML = createDownloadItemHTML(file, true); // true for new download
+  downloadsContainer.insertAdjacentHTML('afterbegin', fileHTML);
+  
+  // Add event listeners for the newly added item
+  addFileActionListeners();
+  
+  // Remove the animation class after animation completes
+  setTimeout(() => {
+    const newItem = downloadsContainer.querySelector(`[data-file-id="${file.id}"]`);
+    if (newItem) {
+      newItem.classList.remove('new-download');
+    }
+  }, 500);
+}

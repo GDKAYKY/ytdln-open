@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const chalk = require('chalk');
 const BinaryDownloader = require('./bin-downloader');
+const fs = require('fs');
 
 const ALLOWED_IPC_CHANNELS = [
   'download-video',
@@ -12,7 +13,10 @@ const ALLOWED_IPC_CHANNELS = [
   'download-success',
   'download-error',
   'binaries-status',
-  'open-downloads-folder'
+  'open-downloads-folder',
+  'get-downloaded-files',
+  'delete-downloaded-file',
+  'open-file-location'
 ];
 
 // Função para validar URL
@@ -23,8 +27,7 @@ function isValidUrl(url) {
     if (!['http:', 'https:'].includes(urlObj.protocol)) {
       return false;
     }
-    const hostname = urlObj.hostname.toLowerCase();
-    return true
+    return true;
   } catch {
     return false;
   }
@@ -44,6 +47,69 @@ function sanitizeArgs(args) {
 // Instância do downloader de binários
 let binaryDownloader = null;
 let binaryPaths = null;
+
+// Downloaded files tracking
+let downloadedFiles = [];
+const downloadsMetadataPath = path.join(app.getPath('userData'), 'downloads.json');
+
+// Functions to manage downloaded files metadata
+function loadDownloadedFiles() {
+  try {
+    if (fs.existsSync(downloadsMetadataPath)) {
+      const data = fs.readFileSync(downloadsMetadataPath, 'utf8');
+      downloadedFiles = JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error loading downloaded files metadata:', error);
+    downloadedFiles = [];
+  }
+}
+
+function saveDownloadedFiles() {
+  try {
+    fs.writeFileSync(downloadsMetadataPath, JSON.stringify(downloadedFiles, null, 2));
+  } catch (error) {
+    console.error('Error saving downloaded files metadata:', error);
+  }
+}
+
+function addDownloadedFile(fileInfo) {
+  const fileData = {
+    id: Date.now() + Math.random(),
+    title: fileInfo.title || 'Unknown Title',
+    url: fileInfo.url || '',
+    filePath: fileInfo.filePath || '',
+    fileName: fileInfo.fileName || '',
+    fileSize: fileInfo.fileSize || 0,
+    duration: fileInfo.duration || 0,
+    thumbnail: fileInfo.thumbnail || '',
+    format: fileInfo.format || '',
+    downloadDate: new Date().toISOString(),
+    ...fileInfo
+  };
+  
+  downloadedFiles.unshift(fileData); // Add to beginning
+  saveDownloadedFiles();
+  return fileData;
+}
+
+function removeDownloadedFile(fileId) {
+  downloadedFiles = downloadedFiles.filter(file => file.id !== fileId);
+  saveDownloadedFiles();
+}
+
+function getDownloadedFiles() {
+  // Filter out files that no longer exist
+  return downloadedFiles.filter(file => {
+    if (file.filePath && fs.existsSync(file.filePath)) {
+      return true;
+    } else {
+      // Remove file from metadata if it doesn't exist anymore
+      removeDownloadedFile(file.id);
+      return false;
+    }
+  });
+}
 
 // Helper function to get the path to the extra resources,
 // works for both development and packaged apps.
@@ -92,6 +158,7 @@ function createWindow () {
 app.whenReady().then(async () => {
   try {
     await initializeBinaries();
+    loadDownloadedFiles(); // Load downloaded files metadata
     createWindow();
   } catch (error) {
     console.error('Erro ao inicializar aplicação:', error);
@@ -234,6 +301,42 @@ ipcMain.on('download-video-with-settings', async (event, videoUrl, settings) => 
         clearTimeout(timeoutId);
         if (code === 0) {
           console.log('Download completed successfully.');
+          
+          // Try to extract file information and add to downloaded files
+          try {
+            const downloadsPath = app.getPath('downloads');
+            const files = fs.readdirSync(downloadsPath);
+            const videoFiles = files.filter(file => {
+              const ext = path.extname(file).toLowerCase();
+              return ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv'].includes(ext);
+            });
+            
+            // Find the most recent video file
+            if (videoFiles.length > 0) {
+              const latestFile = videoFiles.reduce((latest, current) => {
+                const latestPath = path.join(downloadsPath, latest);
+                const currentPath = path.join(downloadsPath, current);
+                const latestTime = fs.statSync(latestPath).mtime;
+                const currentTime = fs.statSync(currentPath).mtime;
+                return currentTime > latestTime ? current : latest;
+              });
+              
+              const filePath = path.join(downloadsPath, latestFile);
+              const stats = fs.statSync(filePath);
+              
+              addDownloadedFile({
+                title: path.parse(latestFile).name,
+                fileName: latestFile,
+                filePath: filePath,
+                fileSize: stats.size,
+                format: path.extname(latestFile).substring(1).toUpperCase(),
+                url: videoUrl
+              });
+            }
+          } catch (error) {
+            console.error('Error tracking downloaded file:', error);
+          }
+          
           event.sender.send('download-success');
         } else {
           console.error(`yt-dlp process exited with code ${code}`);
@@ -371,5 +474,48 @@ ipcMain.on('open-downloads-folder', async (event) => {
     console.error('Erro ao abrir a pasta de downloads:', error);
     // Opcional: notificar o renderer sobre o erro
     event.sender.send('download-error', 'Não foi possível abrir a pasta de downloads.');
+  }
+});
+
+// Handler para obter arquivos baixados
+ipcMain.on('get-downloaded-files', (event) => {
+  try {
+    validateIpcChannel('get-downloaded-files');
+    const files = getDownloadedFiles();
+    event.sender.send('downloaded-files-list', files);
+  } catch (error) {
+    console.error('Erro ao obter arquivos baixados:', error);
+    event.sender.send('download-error', 'Erro ao carregar arquivos baixados.');
+  }
+});
+
+// Handler para deletar arquivo baixado
+ipcMain.on('delete-downloaded-file', (event, fileId) => {
+  try {
+    validateIpcChannel('delete-downloaded-file');
+    const file = downloadedFiles.find(f => f.id === fileId);
+    if (file && file.filePath && fs.existsSync(file.filePath)) {
+      fs.unlinkSync(file.filePath);
+    }
+    removeDownloadedFile(fileId);
+    event.sender.send('file-deleted', fileId);
+  } catch (error) {
+    console.error('Erro ao deletar arquivo:', error);
+    event.sender.send('download-error', 'Erro ao deletar arquivo.');
+  }
+});
+
+// Handler para abrir localização do arquivo
+ipcMain.on('open-file-location', async (event, fileId) => {
+  try {
+    validateIpcChannel('open-file-location');
+    const file = downloadedFiles.find(f => f.id === fileId);
+    if (file && file.filePath) {
+      const open = (await import('open')).default;
+      await open(file.filePath);
+    }
+  } catch (error) {
+    console.error('Erro ao abrir localização do arquivo:', error);
+    event.sender.send('download-error', 'Erro ao abrir localização do arquivo.');
   }
 });

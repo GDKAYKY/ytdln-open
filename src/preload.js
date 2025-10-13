@@ -8,7 +8,12 @@ const ALLOWED_IPC_CHANNELS = [
   'download-success',
   'download-error',
   'binaries-status',
-  'open-downloads-folder'
+  'open-downloads-folder',
+  'get-downloaded-files',
+  'delete-downloaded-file',
+  'open-file-location',
+  'downloaded-files-list',
+  'file-deleted'
 ];
 
 // Função para validar canal IPC
@@ -37,6 +42,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadVideoWithSettings: (url, settings) => ipcRenderer.send('download-video-with-settings', url, settings),
   checkBinariesStatus: () => ipcRenderer.send('check-binaries-status'),
   openDownloadsFolder: () => ipcRenderer.send('open-downloads-folder'),
+  getDownloadedFiles: () => ipcRenderer.send('get-downloaded-files'),
+  deleteDownloadedFile: (fileId) => ipcRenderer.send('delete-downloaded-file', fileId),
+  openFileLocation: (fileId) => ipcRenderer.send('open-file-location', fileId),
   onDownloadProgress: (callback) => {
     const newCallback = (_, data) => callback(data);
     ipcRenderer.on('download-progress', newCallback);
@@ -56,5 +64,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const newCallback = (_, data) => callback(data);
     ipcRenderer.on('binaries-status', newCallback);
     return () => ipcRenderer.removeListener('binaries-status', newCallback);
+  },
+  onDownloadedFilesList: (callback) => {
+    const newCallback = (_, data) => callback(data);
+    ipcRenderer.on('downloaded-files-list', newCallback);
+    return () => ipcRenderer.removeListener('downloaded-files-list', newCallback);
+  },
+  onFileDeleted: (callback) => {
+    const newCallback = (_, data) => callback(data);
+    ipcRenderer.on('file-deleted', newCallback);
+    return () => ipcRenderer.removeListener('file-deleted', newCallback);
   }
 });

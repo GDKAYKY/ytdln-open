@@ -3,15 +3,34 @@ const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
-// Função para verificar espaço em disco disponível
+// --- validações iniciais ----------------------------------------------------
+
+function runCommand(cmd) {
+  return execSync(cmd, { stdio: 'inherit' });
+}
+
+function isWin() {
+  return process.platform === 'win32';
+}
+
+function makeExecutable(p) {
+  if (!isWin()) {
+    try { runCommand(`chmod +x '${p}'`); } catch (e) { console.log("Cant make executable"); }
+  }
+}
+
 function checkDiskSpace(dirPath) {
   try {
-    if (process.platform === 'win32') {
-      const result = execSync(`powershell -command "Get-WmiObject -Class Win32_LogicalDisk -Filter 'DeviceID=\'${dirPath.charAt(0)}:\'' | Select-Object -ExpandProperty FreeSpace"`, { encoding: 'utf8' });
-      return parseInt(result.trim());
+    if (isWin()) {
+      const drive = dirPath.charAt(0).toUpperCase();
+      const result = execSync(
+        `powershell -NoProfile -Command "(Get-WmiObject -Class Win32_LogicalDisk -Filter \\"DeviceID='${drive}:'\\").FreeSpace"`,
+        { encoding: 'utf8' }
+      );
+      return parseInt(result.trim(), 10);
     } else {
       const result = execSync(`df -k '${dirPath}' | tail -1 | awk '{print $4}'`, { encoding: 'utf8' });
-      return parseInt(result.trim()) * 1024; // Converter KB para bytes
+      return parseInt(result.trim(), 10) * 1024;
     }
   } catch (error) {
     console.warn('Não foi possível verificar espaço em disco:', error.message);
@@ -19,68 +38,65 @@ function checkDiskSpace(dirPath) {
   }
 }
 
-// Função para verificar se há espaço suficiente (mínimo 500MB)
-function hasEnoughSpace(dirPath) {
-  const freeSpace = checkDiskSpace(dirPath);
-  if (freeSpace === null) return true; // Se não conseguir verificar, assumir que há espaço
-  const minRequired = 500 * 1024 * 1024; // 500MB
-  return freeSpace >= minRequired;
+function hasEnoughSpace(dirPath, minBytes = 500 * 1024 * 1024) {
+  const free = checkDiskSpace(dirPath);
+  if (free === null) return true; // fallback permissivo
+  return free >= minBytes;
 }
 
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+// procura recursivamente por executável (limita profundidade pra evitar travar)
+function findExecutableByPatterns(root, patterns = [], maxDepth = 2, curDepth = 0) {
+  if (!fs.existsSync(root) || curDepth > maxDepth) return null;
+  for (const item of fs.readdirSync(root)) {
+    const full = path.join(root, item);
+    let stat;
+    try { stat = fs.statSync(full); } catch { continue; }
+
+    if (stat.isFile() && patterns.some(p => item.toLowerCase().includes(p.toLowerCase())))
+      return full;
+
+    if (stat.isDirectory()) {
+      const found = findExecutableByPatterns(full, patterns, maxDepth, curDepth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+// --- Downloader genérico -------------------------------------------------
+
 class BinaryDownloader {
-  constructor() {
+  constructor(opts = {}) {
     this.platform = process.platform;
     this.arch = process.arch;
     this.binDir = this.getBinDirectory();
-    this.downloadUrls = this.getDownloadUrls();
-    this.downloading = false; // Flag para evitar downloads simultâneos
-    this.downloadPromise = null; // Promise do download em andamento
+    this.urls = this.getDownloadUrls();
+    this.downloading = false;
+    this.downloadPromise = null;
+    this.timeoutMs = opts.timeoutMs || 10 * 60 * 1000; // 10 min
   }
 
-  // Função para detectar como o app está rodando
+  // detecta modo (electron / node)
   getAppMode() {
     try {
       const { app } = require('electron');
-      
-      if (app.isPackaged) {
-        return {
-          mode: 'installed',
-          description: 'Aplicativo instalado via instalador',
-          isPackaged: true,
-          isDevelopment: false
-        };
-      } else {
-        return {
-          mode: 'development',
-          description: 'Aplicativo rodando via npm start',
-          isPackaged: false,
-          isDevelopment: true
-        };
-      }
-    } catch (error) {
-      return {
-        mode: 'nodejs',
-        description: 'Rodando diretamente via Node.js (teste)',
-        isPackaged: false,
-        isDevelopment: true
-      };
+      if (app.isPackaged) return { mode: 'installed', isPackaged: true, description: 'Aplicativo instalado via instalador' };
+      return { mode: 'development', isPackaged: false, description: 'Rodando via npm start (dev)' };
+    } catch (err) {
+      return { mode: 'nodejs', isPackaged: false, description: 'Rodando via Node.js (teste)' };
     }
   }
 
   getBinDirectory() {
     const appMode = this.getAppMode();
-    
-    if (appMode.isPackaged) {
-      // Aplicativo instalado - binários em resources/bin
-      return path.join(process.resourcesPath, 'bin');
-    } else {
-      // Desenvolvimento - binários em ./bin
-      return path.join(__dirname, '..', 'bin');
-    }
+    return appMode.isPackaged ? path.join(process.resourcesPath, 'bin') : path.join(__dirname, '..', 'bin');
   }
 
   getDownloadUrls() {
-    const urls = {
+    const common = {
       win32: {
         ytdlp: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
         aria2c: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip',
@@ -97,318 +113,202 @@ class BinaryDownloader {
         ffmpeg: 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz'
       }
     };
-
-    return urls[this.platform] || urls.linux;
+    return common[this.platform] || common.linux;
   }
 
   async ensureBinDirectory() {
-    if (!fs.existsSync(this.binDir)) {
-      fs.mkdirSync(this.binDir, { recursive: true });
-    }
-    
-    // Verificar espaço em disco antes de continuar
+    ensureDir(this.binDir);
     if (!hasEnoughSpace(this.binDir)) {
       throw new Error('Espaço insuficiente em disco. É necessário pelo menos 500MB de espaço livre.');
     }
   }
 
-  async downloadFile(url, filename, isRedirect = false) {
+  downloadFile(url, filename) {
+    const filePath = path.join(this.binDir, filename);
     return new Promise((resolve, reject) => {
-      const filePath = path.join(this.binDir, filename);
-      
-      // Verificar se o arquivo já existe e tem conteúdo (apenas se não for redirecionamento)
-      if (!isRedirect && fs.existsSync(filePath)) {
-        const stats = fs.statSync(filePath);
-        if (stats.size > 0) {
-          console.log(`Arquivo ${filename} já existe e tem conteúdo (${stats.size} bytes), pulando download.`);
-          resolve(filePath);
-          return;
-        } else {
-          console.log(`Arquivo ${filename} existe mas está vazio, removendo e baixando novamente.`);
-          fs.unlinkSync(filePath);
-        }
+      // Já existe e tem tamanho -> pula
+      if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+        console.log(`Arquivo ${filename} já existe, pulando download.`);
+        return resolve(filePath);
       }
 
-      console.log(`Baixando ${filename} de ${url}...`);
-      const file = fs.createWriteStream(filePath);
-      
-      // Timeout de 10 minutos para downloads
-      const timeoutId = setTimeout(() => {
+      console.log(`Baixando ${filename} de ${url} ...`);
+      const tmpPath = filePath + '.part';
+      const file = fs.createWriteStream(tmpPath);
+
+      const timeout = setTimeout(() => {
         file.close();
-        fs.unlink(filePath, () => {});
-        reject(new Error(`Timeout ao baixar ${filename} (10 minutos)`));
-      }, 10 * 60 * 1000);
-      
-      https.get(url, (response) => {
-        // Seguir redirecionamentos
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          console.log(`Redirecionando para: ${response.headers.location}`);
+        try { fs.unlinkSync(tmpPath); } catch (e) {}
+        reject(new Error(`Timeout ao baixar ${filename}`));
+      }, this.timeoutMs);
+
+      const request = https.get(url, (res) => {
+        // seguir redirecionamento
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          clearTimeout(timeout);
           file.close();
-          fs.unlink(filePath, () => {}); // Remove arquivo parcial
-          // Recursivamente seguir o redirecionamento
-          this.downloadFile(response.headers.location, filename, true).then(resolve).catch(reject);
-          return;
+          try { fs.unlinkSync(tmpPath); } catch (e) {}
+          return resolve(this.downloadFile(res.headers.location, filename));
         }
-        
-        if (response.statusCode !== 200) {
+
+        if (res.statusCode !== 200) {
+          clearTimeout(timeout);
           file.close();
-          fs.unlink(filePath, () => {}); // Remove arquivo parcial
-          reject(new Error(`Erro ao baixar ${filename}: ${response.statusCode}`));
-          return;
+          try { fs.unlinkSync(tmpPath); } catch (e) {}
+          return reject(new Error(`HTTP ${res.statusCode} ao baixar ${filename}`));
         }
-        
-        let downloadedBytes = 0;
-        
-        response.on('data', (chunk) => {
-          downloadedBytes += chunk.length;
-        });
-        
-        response.pipe(file);
-        
+
+        res.pipe(file);
         file.on('finish', () => {
-          clearTimeout(timeoutId);
+          clearTimeout(timeout);
           file.close();
-          const finalStats = fs.statSync(filePath);
-          console.log(`${filename} baixado com sucesso (${finalStats.size} bytes).`);
+          fs.renameSync(tmpPath, filePath);
+          console.log(`${filename} baixado (${fs.statSync(filePath).size} bytes).`);
           resolve(filePath);
         });
-        
-        file.on('error', (err) => {
-          clearTimeout(timeoutId);
-          file.close();
-          fs.unlink(filePath, () => {}); // Remove arquivo parcial
-          reject(err);
-        });
-      }).on('error', (err) => {
-        clearTimeout(timeoutId);
+      });
+
+      request.on('error', (err) => {
+        clearTimeout(timeout);
         file.close();
-        fs.unlink(filePath, () => {}); // Remove arquivo parcial
+        try { fs.unlinkSync(tmpPath); } catch (e) {}
         reject(err);
       });
     });
   }
 
-  async extractArchive(archivePath, extractTo) {
-    return new Promise((resolve, reject) => {
-      try {
-        const extension = path.extname(archivePath).toLowerCase();
-        
-        if (extension === '.zip') {
-          // Para Windows e macOS FFmpeg
-          if (this.platform === 'win32') {
-            execSync(`powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${extractTo}' -Force"`, { stdio: 'inherit' });
-          } else {
-            execSync(`unzip -o '${archivePath}' -d '${extractTo}'`, { stdio: 'inherit' });
-          }
-        } else if (extension === '.bz2' || extension === '.xz') {
-          // Para macOS e Linux
-          execSync(`tar -xf '${archivePath}' -C '${extractTo}'`, { stdio: 'inherit' });
-        }
-        
-        console.log(`Arquivo extraído: ${archivePath}`);
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  async downloadAndExtractAria2c() {
-    const aria2cUrl = this.downloadUrls.aria2c;
-    const filename = path.basename(aria2cUrl);
-    
+  async extractArchive(archivePath) {
+    const ext = path.extname(archivePath).toLowerCase();
+    const dest = this.binDir;
     try {
-      const archivePath = await this.downloadFile(aria2cUrl, filename);
-      await this.extractArchive(archivePath, this.binDir);
-      
-      // Encontrar o executável extraído
-      const extractedDir = fs.readdirSync(this.binDir).find(dir => 
-        dir.includes('aria2') && fs.statSync(path.join(this.binDir, dir)).isDirectory()
-      );
-      
-      if (extractedDir) {
-        const aria2cPath = path.join(this.binDir, extractedDir, 'aria2c' + (this.platform === 'win32' ? '.exe' : ''));
-        if (fs.existsSync(aria2cPath)) {
-          // Tornar executável no Unix
-          if (this.platform !== 'win32') {
-            execSync(`chmod +x '${aria2cPath}'`);
-          }
-          return aria2cPath;
+      if (ext === '.zip') {
+        if (isWin()) {
+          runCommand(`powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${dest}' -Force"`);
+        } else {
+          runCommand(`unzip -o '${archivePath}' -d '${dest}'`);
         }
+      } else if (ext === '.bz2' || ext === '.xz' || /\.tar\.(gz|bz2|xz)$/.test(archivePath)) {
+        runCommand(`tar -xf '${archivePath}' -C '${dest}'`);
+      } else {
+        // Se for um binário puro (sem compressão), nada a extrair
+        return;
       }
-      
-      throw new Error('aria2c não encontrado após extração');
-    } catch (error) {
-      console.error('Erro ao baixar/extrair aria2c:', error);
-      throw error;
+      console.log(`Extraído: ${path.basename(archivePath)}`);
+    } catch (err) {
+      throw new Error(`Falha ao extrair ${archivePath}: ${err.message}`);
     }
   }
 
-  async downloadAndExtractFFmpeg() {
-    const ffmpegUrl = this.downloadUrls.ffmpeg;
-    const filename = path.basename(ffmpegUrl);
-    
-    try {
-      const archivePath = await this.downloadFile(ffmpegUrl, filename);
-      await this.extractArchive(archivePath, this.binDir);
-      
-      // Encontrar o executável extraído
-      const extractedDir = fs.readdirSync(this.binDir).find(dir => 
-        dir.includes('ffmpeg') && fs.statSync(path.join(this.binDir, dir)).isDirectory()
-      );
-      
-      if (extractedDir) {
-        const ffmpegPath = path.join(this.binDir, extractedDir, 'bin', 'ffmpeg' + (this.platform === 'win32' ? '.exe' : ''));
-        if (fs.existsSync(ffmpegPath)) {
-          // Tornar executável no Unix
-          if (this.platform !== 'win32') {
-            execSync(`chmod +x '${ffmpegPath}'`);
-          }
-          return ffmpegPath;
-        }
+  async downloadAndExtract(url, nameHintPatterns = []) {
+    const filename = path.basename(new URL(url).pathname);
+    const downloaded = await this.downloadFile(url, filename);
+    // Se for arquivo comprimido, tenta extrair
+    const ext = path.extname(downloaded).toLowerCase();
+    if (['.zip', '.bz2', '.xz', '.gz'].some(e => downloaded.endsWith(e) || /\.tar\./.test(downloaded))) {
+      await this.extractArchive(downloaded);
+      // procura executável pelo padrão
+      const found = findExecutableByPatterns(this.binDir, nameHintPatterns);
+      if (found) {
+        makeExecutable(found);
+        return found;
       }
-      
-      throw new Error('ffmpeg não encontrado após extração');
-    } catch (error) {
-      console.error('Erro ao baixar/extrair ffmpeg:', error);
-      throw error;
+      // fallback: procurar executável com nomes óbvios
+    } else {
+      makeExecutable(downloaded);
+      return downloaded;
     }
+    return null;
   }
 
+  // wrappers específicos que usam a função genérica
   async downloadYTDLP() {
-    const ytdlpUrl = this.downloadUrls.ytdlp;
-    const filename = path.basename(ytdlpUrl);
-    
-    try {
-      const ytdlpPath = await this.downloadFile(ytdlpUrl, filename);
-      
-      // Tornar executável no Unix
-      if (this.platform !== 'win32') {
-        execSync(`chmod +x '${ytdlpPath}'`);
-      }
-      
-      return ytdlpPath;
-    } catch (error) {
-      console.error('Erro ao baixar yt-dlp:', error);
-      throw error;
-    }
+    const url = this.urls.ytdlp;
+    const namePatterns = [ 'yt-dlp', 'ytdlp' ];
+    const p = await this.downloadAndExtract(url, namePatterns);
+    if (!p) throw new Error('Não encontrou yt-dlp após download.');
+    return p;
   }
 
+  async downloadAria2c() {
+    const url = this.urls.aria2c;
+    const namePatterns = [ 'aria2c', 'aria2' ];
+    const p = await this.downloadAndExtract(url, namePatterns);
+    if (!p) throw new Error('Não encontrou aria2c após extração.');
+    return p;
+  }
+
+  async downloadFFmpeg() {
+    const url = this.urls.ffmpeg;
+    const namePatterns = [ 'ffmpeg' ];
+    const p = await this.downloadAndExtract(url, namePatterns);
+    if (!p) throw new Error('Não encontrou ffmpeg após extração.');
+    return p;
+  }
+
+  // download de todos (controla concorrência simples)
   async downloadAllBinaries() {
-    // Evitar downloads simultâneos
-    if (this.downloading) {
-      console.log('Download já em andamento, aguardando...');
-      return this.downloadPromise;
-    }
-    
+    if (this.downloading) return this.downloadPromise;
     this.downloading = true;
     this.downloadPromise = this._downloadAllBinaries();
-    
     try {
-      const result = await this.downloadPromise;
-      return result;
+      return await this.downloadPromise;
     } finally {
       this.downloading = false;
       this.downloadPromise = null;
     }
   }
-  
+
   async _downloadAllBinaries() {
-    const appMode = this.getAppMode();
-    console.log(`Modo de execução: ${appMode.description}`);
-    console.log(`Detectado SO: ${this.platform} (${this.arch})`);
+    console.log(`Modo: ${this.getAppMode().description} — Plataf.: ${this.platform}/${this.arch}`);
     console.log(`Diretório de binários: ${this.binDir}`);
-    
     await this.ensureBinDirectory();
-    
+
     try {
-      const [ytdlpPath, aria2cPath, ffmpegPath] = await Promise.all([
+      const [ytdlp, aria2c, ffmpeg] = await Promise.all([
         this.downloadYTDLP(),
-        this.downloadAndExtractAria2c(),
-        this.downloadAndExtractFFmpeg()
+        this.downloadAria2c(),
+        this.downloadFFmpeg()
       ]);
-      
-      console.log('Todos os binários baixados com sucesso!');
-      return {
-        ytdlp: ytdlpPath,
-        aria2c: aria2cPath,
-        ffmpeg: ffmpegPath
-      };
-    } catch (error) {
-      console.error('Erro ao baixar binários:', error);
-      throw error;
+      console.log('Todos os binários baixados/extrados.');
+      return { ytdlp, aria2c, ffmpeg };
+    } catch (err) {
+      console.error('Erro no download dos binários:', err.message);
+      throw err;
     }
   }
 
   getBinaryPaths() {
-    const ytdlpName = this.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    const aria2cName = this.platform === 'win32' ? 'aria2c.exe' : 'aria2c';
-    const ffmpegName = this.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-    
-    // Procurar pelos binários no diretório
-    const ytdlpPath = this.findBinary(ytdlpName);
-    const aria2cPath = this.findBinary(aria2cName);
-    const ffmpegPath = this.findBinary(ffmpegName);
-    
-    return {
-      ytdlp: ytdlpPath,
-      aria2c: aria2cPath,
-      ffmpeg: ffmpegPath
-    };
-  }
+    const ytdlpName = isWin() ? 'yt-dlp.exe' : 'yt-dlp';
+    const aria2cName = isWin() ? 'aria2c.exe' : 'aria2c';
+    const ffmpegName = isWin() ? 'ffmpeg.exe' : 'ffmpeg';
 
-  findBinary(binaryName) {
-    if (!fs.existsSync(this.binDir)) {
-      return null;
-    }
-    
-    const items = fs.readdirSync(this.binDir);
-    
-    // Procurar diretamente no diretório
-    const directPath = path.join(this.binDir, binaryName);
-    if (fs.existsSync(directPath)) {
-      return directPath;
-    }
-    
-    // Procurar em subdiretórios
-    for (const item of items) {
-      const itemPath = path.join(this.binDir, item);
-      if (fs.statSync(itemPath).isDirectory()) {
-        const binaryPath = path.join(itemPath, binaryName);
-        if (fs.existsSync(binaryPath)) {
-          return binaryPath;
-        }
-        
-        // Procurar em subdiretórios como 'bin'
-        const binPath = path.join(itemPath, 'bin', binaryName);
-        if (fs.existsSync(binPath)) {
-          return binPath;
-        }
-      }
-    }
-    
-    return null;
+    const direct = (name) => {
+      const p = path.join(this.binDir, name);
+      if (fs.existsSync(p)) return p;
+      return findExecutableByPatterns(this.binDir, [path.parse(name).name]);
+    };
+
+    return {
+      ytdlp: direct(ytdlpName),
+      aria2c: direct(aria2cName),
+      ffmpeg: direct(ffmpegName)
+    };
   }
 
   async checkAndDownloadBinaries() {
     const paths = this.getBinaryPaths();
-    
-    // Verificar se todos os binários existem
-    const missingBinaries = [];
-    if (!paths.ytdlp) missingBinaries.push('yt-dlp');
-    if (!paths.aria2c) missingBinaries.push('aria2c');
-    if (!paths.ffmpeg) missingBinaries.push('ffmpeg');
-    
-    if (missingBinaries.length > 0) {
-      console.log(`Binários faltando: ${missingBinaries.join(', ')}`);
-      console.log('Iniciando download automático...');
-      
-      const downloadedPaths = await this.downloadAllBinaries();
-      return downloadedPaths;
+    const missing = [];
+    if (!paths.ytdlp) missing.push('yt-dlp');
+    if (!paths.aria2c) missing.push('aria2c');
+    if (!paths.ffmpeg) missing.push('ffmpeg');
+
+    if (missing.length === 0) {
+      console.log('Todos os binários já disponíveis.');
+      return paths;
     }
-    
-    console.log('Todos os binários já estão disponíveis.');
-    return paths;
+
+    console.log('Binários faltando:', missing.join(', '), '- iniciando download.');
+    return await this.downloadAllBinaries();
   }
 }
 
