@@ -44,7 +44,6 @@ body {
 /* Main container using flexbox auto layout */
 .frame-container {
     min-height: 100vh;
-    min-height: 100vw;
 }
 
 /* Background frame using flexbox */
@@ -58,6 +57,7 @@ body {
 
 /* Title section */
 .title-frame {
+    margin-top: 2vh;
     display: flex;
     flex-direction: column;
 }
@@ -206,6 +206,30 @@ body {
     transform: translateY(2px);
     box-shadow: none;
 }
+
+/* Shimmering text while downloading */
+.download-button.downloading {
+    background: var(--color-dark-gray-4);
+    color: var(--color-white);
+}
+
+.download-button .btn-shine {
+    background: linear-gradient(to right, #9f9f9f 0, #ffffff 10%, #868686 20%);
+    background-position: 0;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shine 3s infinite linear;
+    animation-fill-mode: forwards;
+    font-weight: 700;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+@keyframes shine {
+    0% { background-position: 0; }
+    60% { background-position: 180px; }
+    100% { background-position: 180px; }
+}
 /* Progress circle using flexbox for centering */
 .progress-frame {
     width: 50px;
@@ -270,13 +294,18 @@ body {
     margin-left: 2vw;
     margin-right: 2vw;
     gap: var(--main-gap);
-    margin-top: 18px;
+    margin-top: 2vh;
+    margin-bottom: 3vh;
+    flex: 1;            /* take remaining vertical space */
+    min-height: 0;      /* allow children to shrink for scroll */
 }
 
 /* Console section using flexbox */
 .console-section {
     display: flex;
     flex-direction: column;
+    height: 100%;
+    min-height: 0;
     width: 100%;
 }
 
@@ -294,6 +323,7 @@ body {
     width: 100%;
     margin-right: 0;
     height: 100%;
+    min-height: 0;
     background: var(--color-dark-gray-1);
     border: 1px solid var(--color-medium-gray);
     border-radius: 8px;
@@ -315,6 +345,7 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
 }
 
 .downloads-title {
@@ -331,7 +362,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 400px;
+    height: 100%;
     overflow-y: auto;
     padding-right: 4px;
     scrollbar-width: thin;
@@ -660,6 +691,13 @@ body {
     0% { width: 0%; }
     100% { width: 100%; }
 }
+
+.title-icon {
+    width: 64px;
+    height: 64px;
+    margin-right: 8px; /* Space between logo and title text */
+}
+
 
 /* Modal styles */
 .modal {

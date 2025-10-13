@@ -248,6 +248,9 @@ downloadBtn.addEventListener('click', () => {
   }
   
   updateStatus('Iniciando download...');
+  // Visual state: downloading
+  downloadBtn.classList.add('downloading');
+  downloadBtn.innerHTML = '<span class="btn-shine">Baixando…</span>';
   
   // Enviar configurações junto com a URL
   window.electronAPI.downloadVideoWithSettings(url, currentSettings);
@@ -273,6 +276,10 @@ window.electronAPI.onDownloadSuccess(() => {
   openFolderBtn.style.display = 'block';
   progressText.textContent = '100%';
 
+  // Restore button state
+  downloadBtn.classList.remove('downloading');
+  downloadBtn.textContent = 'Download';
+
   toastContainer.style.opacity = 1;
   setTimeout(() => {
     toastContainer.style.opacity = 0;
@@ -282,6 +289,9 @@ window.electronAPI.onDownloadSuccess(() => {
 // Listen for download error message
 window.electronAPI.onDownloadError((errorMessage) => {
   updateStatus(`\n\nERRO: ${errorMessage}`, true);
+  // Restore button state on error
+  downloadBtn.classList.remove('downloading');
+  downloadBtn.textContent = 'Download';
 });
 
 // Content Loader Functions
