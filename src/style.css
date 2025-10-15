@@ -200,7 +200,6 @@ body {
     border-radius: 8px;
     border: none;
     cursor: pointer;
-    font-style: bold;
     font-weight: 700;
     overflow: hidden;
     font-size: 12px;
@@ -226,8 +225,7 @@ body {
 }
 
 .download-button .btn-shine {
-    background: linear-gradient(to right, #9f9f9f 0, #ffffff 10%, #868686 20%);
-    background-position: 0;
+    background: linear-gradient(to right, #9f9f9f 0, #ffffff 10%, #868686 20%) 0;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -304,11 +302,8 @@ body {
 .main-content {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    margin-left: 2vw;
-    margin-right: 2vw;
     gap: var(--main-gap);
-    margin-top: 2vh;
-    margin-bottom: 3vh;
+    margin: 2vh 2vw 3vh;
     flex: 1;            /* take remaining vertical space */
     min-height: 0;      /* allow children to shrink for scroll */
     max-height: calc(100vh - 200px); /* prevent overflow */
@@ -687,7 +682,7 @@ body {
 }
 
 @keyframes progressFill {
-    0% { width: 0%; }
+    0% { width: 0; }
     100% { width: 100%; }
 }
 
@@ -878,22 +873,22 @@ body {
     width: 112px;
     height: 48px;
     margin-top: 64px;
-    margin-left: 0px;
+    margin-left: 0;
     animation: abox1 3s 1s forwards ease-in-out infinite;
 }
 
 .box2 {
     width: 48px;
     height: 48px;
-    margin-top: 0px;
-    margin-left: 0px;
+    margin-top: 0;
+    margin-left: 0;
     animation: abox2 3s 1s forwards ease-in-out infinite;
 }
 
 .box3 {
     width: 48px;
     height: 48px;
-    margin-top: 0px;
+    margin-top: 0;
     margin-left: 64px;
     animation: abox3 3s 1s forwards ease-in-out infinite;
 }
@@ -913,63 +908,63 @@ body {
         width: 112px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 
     12.5% {
         width: 48px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 
     25% {
         width: 48px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 
     37.5% {
         width: 48px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 
     50% {
         width: 48px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 
     62.5% {
         width: 48px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 
     75% {
         width: 48px;
         height: 112px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     87.5% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     100% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 }
 
@@ -977,63 +972,63 @@ body {
     0% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     12.5% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     25% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     37.5% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     50% {
         width: 112px;
         height: 48px;
-        margin-top: 0px;
-        margin-left: 0px;
+        margin-top: 0;
+        margin-left: 0;
     }
 
     62.5% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 
     75% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 
     87.5% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 
     100% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 }
@@ -1042,21 +1037,21 @@ body {
     0% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 
     12.5% {
         width: 48px;
         height: 48px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 
     25% {
         width: 48px;
         height: 112px;
-        margin-top: 0px;
+        margin-top: 0;
         margin-left: 64px;
     }
 
@@ -1099,6 +1094,6 @@ body {
         width: 112px;
         height: 48px;
         margin-top: 64px;
-        margin-left: 0px;
+        margin-left: 0;
     }
 }
