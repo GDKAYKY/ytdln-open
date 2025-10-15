@@ -23,7 +23,7 @@ module.exports = {
         exe: 'ytdln-open',
         description: 'Desktop video/audio downloader using yt-dlp',
         version: '1.0.0',
-        language: 1033, // English
+        language: 1033,
         oneClick: false,
         perMachine: false,
         allowToChangeInstallationDirectory: true,
