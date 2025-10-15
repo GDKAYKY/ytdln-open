@@ -1,11 +1,10 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
-const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const path = require('node:path');
+const { spawn, execFileSync } = require('node:child_process');
 const BinaryDownloader = require('./bin-downloader');
-const fs = require('fs');
-const crypto = require('crypto');
+const fs = require('node:fs');
 
-const ALLOWED_IPC_CHANNELS = [
+const ALLOWED_IPC_CHANNELS = new Set([
     'download-video',
     'download-video-with-settings',
     'check-binaries-status',
@@ -17,7 +16,7 @@ const ALLOWED_IPC_CHANNELS = [
     'get-downloaded-files',
     'delete-downloaded-file',
     'open-file-location'
-];
+]);
 
 // ============================================================================
 // VALIDATION UTILITIES
@@ -35,7 +34,7 @@ function isValidUrl(url) {
 function sanitizeArgs(args) {
     return args.map(arg => {
         if (typeof arg === 'string') {
-            return arg.replace(/[;&|`$[\]{}]/g, '');
+            return arg.replaceAll(/[;&|`$[\]{}]/g, '');
         }
         return arg;
     });
@@ -57,32 +56,47 @@ function validateIpcChannel(channel) {
  * @param {string} expectedHash - Hash SHA256 esperado
  * @returns {boolean}
  */
-function validateBinaryIntegrity(binaryPath, expectedHash) {
-    try {
-        const fileBuffer = fs.readFileSync(binaryPath);
-        const hashSum = crypto.createHash('sha256');
-        hashSum.update(fileBuffer);
-        const hex = hashSum.digest('hex');
 
-        return hex === expectedHash;
-    } catch (error) {
-        console.error('Erro ao validar integridade do binário:', error);
-        return false;
-    }
-}
 
 /**
  * Garante que o binário tem permissões de execução (Linux/Mac)
  * @param {string} binaryPath - Caminho para o binário
  */
-function ensureExecutable(binaryPath) {
-    if (process.platform !== 'win32') {
-        try {
-            fs.chmodSync(binaryPath, 0o755);
-            console.log(`Permissões de execução definidas para: ${binaryPath}`);
-        } catch (error) {
-            console.error('Erro ao definir permissões:', error);
-        }
+
+/**
+ * Executa um comando de forma segura usando execFileSync
+ * @param {string} command - Comando para executar
+ * @param {Array} args - Argumentos do comando
+ * @param {Object} options - Opções do execFileSync
+ * @returns {string|null}
+ */
+function safeExecFile(command, args = [], options = {}) {
+    try {
+        const result = execFileSync(command, args, {
+            encoding: 'utf8',
+            timeout: 10,
+            ...options
+        });
+        return result.trim();
+    }
+    catch (error) {
+        console.error(`Erro ao executar comando: ${command}`, error);
+        return null;
+    }
+}
+
+/**
+ * Encontra um binário no PATH do sistema
+ * @param {string} binaryName - Nome do binário
+ * @returns {string|null}
+ */
+function findSystemBinary(binaryName) {
+    if (process.platform === 'win32') {
+        const result = safeExecFile('where', [binaryName]);
+        return result ? result.split('\n')[0].trim() : null;
+    } else {
+        const result = safeExecFile('which', [binaryName]);
+        return result || null;
     }
 }
 
@@ -97,15 +111,10 @@ function getFfmpegPath() {
     }
 
     // Fallback para binário do sistema
-    try {
-        const command = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg';
-        const systemFfmpeg = execSync(command, { encoding: 'utf8' }).trim().split('\n')[0];
-        if (systemFfmpeg && fs.existsSync(systemFfmpeg)) {
-            console.log('Usando FFmpeg do sistema:', systemFfmpeg);
-            return systemFfmpeg;
-        }
-    } catch (error) {
-        // Comando não encontrou o ffmpeg
+    const systemFfmpeg = findSystemBinary('ffmpeg');
+    if (systemFfmpeg && fs.existsSync(systemFfmpeg)) {
+        console.log('Usando FFmpeg do sistema:', systemFfmpeg);
+        return systemFfmpeg;
     }
 
     console.error('FFmpeg não encontrado');
@@ -123,15 +132,10 @@ function getYtdlpPath() {
     }
 
     // Fallback para binário do sistema
-    try {
-        const command = process.platform === 'win32' ? 'where yt-dlp' : 'which yt-dlp';
-        const systemYtdlp = execSync(command, { encoding: 'utf8' }).trim().split('\n')[0];
-        if (systemYtdlp && fs.existsSync(systemYtdlp)) {
-            console.log('Usando yt-dlp do sistema:', systemYtdlp);
-            return systemYtdlp;
-        }
-    } catch (error) {
-        // Comando não encontrou o yt-dlp
+    const systemYtdlp = findSystemBinary('yt-dlp');
+    if (systemYtdlp && fs.existsSync(systemYtdlp)) {
+        console.log('Usando yt-dlp do sistema:', systemYtdlp);
+        return systemYtdlp;
     }
 
     console.error('yt-dlp não encontrado');
@@ -143,40 +147,6 @@ function getYtdlpPath() {
  * @param {Object} paths - Objeto com os caminhos dos binários
  * @returns {boolean}
  */
-function validateBinaries(paths) {
-    const { ytdlp, ffmpeg } = paths;
-
-    // Verifica existência
-    if (!fs.existsSync(ytdlp)) {
-        console.error('yt-dlp não encontrado:', ytdlp);
-        return false;
-    }
-
-    if (!fs.existsSync(ffmpeg)) {
-        console.error('ffmpeg não encontrado:', ffmpeg);
-        return false;
-    }
-
-    // Define permissões de execução
-    ensureExecutable(ytdlp);
-    ensureExecutable(ffmpeg);
-
-    // Verifica se são executáveis (teste básico)
-    try {
-        if (process.platform === 'win32') {
-            execSync(`"${ytdlp}" --version`, { timeout: 5000 });
-            execSync(`"${ffmpeg}" -version`, { timeout: 5000 });
-        } else {
-            execSync(`${ytdlp} --version`, { timeout: 5000 });
-            execSync(`${ffmpeg} -version`, { timeout: 5000 });
-        }
-        console.log('✓ Binários validados com sucesso');
-        return true;
-    } catch (error) {
-        console.error('Erro ao validar executabilidade dos binários:', error);
-        return false;
-    }
-}
 
 /**
  * Obtém a versão de um binário
@@ -185,22 +155,11 @@ function validateBinaries(paths) {
  * @returns {string|null}
  */
 function getBinaryVersion(binaryPath, versionFlag = '--version') {
-    try {
-        const command = process.platform === 'win32'
-            ? `"${binaryPath}" ${versionFlag}`
-            : `${binaryPath} ${versionFlag}`;
+    const output = safeExecFile(binaryPath, [versionFlag]);
+    if (!output) return null;
 
-        const output = execSync(command, {
-            encoding: 'utf8',
-            timeout: 5000
-        });
-
-        // Extrai apenas a primeira linha (geralmente contém a versão)
-        return output.split('\n')[0].trim();
-    } catch (error) {
-        console.error(`Erro ao obter versão de ${binaryPath}:`, error);
-        return null;
-    }
+    // Extrai apenas a primeira linha (geralmente contém a versão)
+    return output.split('\n')[0].trim();
 }
 
 /**
@@ -239,11 +198,6 @@ async function initializeBinaries() {
         binaryDownloader = new BinaryDownloader();
         binaryPaths = await binaryDownloader.checkAndDownloadBinaries();
 
-        // Validar binários antes de usar
-        if (!validateBinaries(binaryPaths)) {
-            throw new Error('Falha na validação dos binários');
-        }
-
         console.log('✓ Binários inicializados e validados:', binaryPaths);
         return binaryPaths;
     } catch (error) {
@@ -263,13 +217,6 @@ async function initializeBinaries() {
 
         throw error;
     }
-}
-
-function getExtraResourcesPath() {
-    if (app.isPackaged) {
-        return path.join(process.resourcesPath, 'bin');
-    }
-    return path.join(__dirname, '..', 'bin');
 }
 
 // ============================================================================
@@ -301,7 +248,6 @@ function saveDownloadedFiles() {
 
 function addDownloadedFile(fileInfo) {
     const fileData = {
-        id: Date.now() + Math.random(),
         title: fileInfo.title || 'Unknown Title',
         url: fileInfo.url || '',
         filePath: fileInfo.filePath || '',
@@ -351,7 +297,7 @@ function trackDownloadedFile(videoUrl) {
             const latestTime = fs.statSync(latestPath).mtime;
             const currentTime = fs.statSync(currentPath).mtime;
             return currentTime > latestTime ? current : latest;
-        });
+        }, videoFiles[0]); // Use first element as initial value
 
         const filePath = path.join(downloadsPath, latestFile);
         const stats = fs.statSync(filePath);
@@ -376,9 +322,11 @@ function trackDownloadedFile(videoUrl) {
 function buildYtdlpArgs(settings, videoUrl, ffmpegPath) {
     const args = ['--progress', '--newline'];
 
-    args.push('-o', path.join(app.getPath('downloads'), '%(title)s.%(ext)s'));
-    args.push('--ffmpeg-location', ffmpegPath);
-    args.push('--merge-output-format', settings.outputFormat);
+    args.push(
+        '-o', path.join(app.getPath('downloads'), '%(title)s.%(ext)s'),
+        '--ffmpeg-location', ffmpegPath,
+        '--merge-output-format', settings.outputFormat
+    );
 
     if (settings.quality !== 'best') {
         if (settings.quality === 'worst') {
@@ -397,10 +345,12 @@ function buildYtdlpArgs(settings, videoUrl, ffmpegPath) {
     if (settings.userAgent) args.push('--user-agent', settings.userAgent);
     if (settings.referer) args.push('--referer', settings.referer);
 
-    args.push('--socket-timeout', settings.socketTimeout.toString());
-    args.push('--retries', settings.retries.toString());
-    args.push('--fragment-retries', settings.fragmentRetries.toString());
-    args.push('--extractor-retries', settings.extractorRetries.toString());
+    args.push(
+        '--socket-timeout', settings.socketTimeout.toString(),
+        '--retries', settings.retries.toString(),
+        '--fragment-retries', settings.fragmentRetries.toString(),
+        '--extractor-retries', settings.extractorRetries.toString()
+    );
 
     if (settings.noCheckCertificate) args.push('--no-check-certificate');
     if (settings.ignoreErrors) args.push('--ignore-errors');
@@ -412,18 +362,20 @@ function buildYtdlpArgs(settings, videoUrl, ffmpegPath) {
 function getVideoInfo(ytdlpPath, videoUrl) {
     return new Promise((resolve) => {
         const infoArgs = ['--dump-json', videoUrl];
-        const process = spawn(ytdlpPath, sanitizeArgs(infoArgs));
+        const ytdlpProcess = spawn(ytdlpPath, sanitizeArgs(infoArgs), {
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
         let infoJson = '';
 
-        process.stdout.on('data', (data) => {
+        ytdlpProcess.stdout.on('data', (data) => {
             infoJson += data.toString();
         });
 
-        process.stderr.on('data', (data) => {
+        ytdlpProcess.stderr.on('data', (data) => {
             console.error(`yt-dlp (info) stderr: ${data}`);
         });
 
-        process.on('close', (code) => {
+        ytdlpProcess.on('close', (code) => {
             if (code !== 0) {
                 resolve(null);
                 return;
@@ -436,6 +388,11 @@ function getVideoInfo(ytdlpPath, videoUrl) {
                 console.error('Erro ao analisar JSON do vídeo:', e);
                 resolve(null);
             }
+        });
+
+        ytdlpProcess.on('error', (err) => {
+            console.error('Erro ao executar yt-dlp:', err);
+            resolve(null);
         });
     });
 }
@@ -469,7 +426,9 @@ function buildDownloadArgs(settings, videoUrl, ffmpegPath, sourceAcodec) {
 
 function runYtdlpProcess(event, ytdlpPath, downloadArgs, videoUrl) {
     const sanitizedArgs = sanitizeArgs(downloadArgs);
-    const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs);
+    const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs, {
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
 
     const timeoutId = setTimeout(() => {
         if (!ytdlpProcess.killed) {
@@ -633,9 +592,8 @@ ipcMain.on('check-binaries-status', (event) => {
 ipcMain.on('open-downloads-folder', async (event) => {
     try {
         validateIpcChannel('open-downloads-folder');
-        const open = (await import('open')).default;
         const downloadsPath = app.getPath('downloads');
-        await open(downloadsPath);
+        await shell.openPath(downloadsPath);
     } catch (error) {
         console.error('Erro ao abrir a pasta de downloads:', error);
         event.sender.send('download-error', 'Não foi possível abrir a pasta de downloads.');
@@ -657,24 +615,30 @@ ipcMain.on('delete-downloaded-file', (event, fileId) => {
     try {
         validateIpcChannel('delete-downloaded-file');
         const file = downloadedFiles.find(f => f.id === fileId);
-        if (file && file.filePath && fs.existsSync(file.filePath)) {
+
+        if (file?.filePath && fs.existsSync(file.filePath)) {
             fs.unlinkSync(file.filePath);
         }
+
         removeDownloadedFile(fileId);
         event.sender.send('file-deleted', fileId);
     } catch (error) {
-        console.error('Erro ao deletar arquivo:', error);
-        event.sender.send('download-error', 'Erro ao deletar arquivo.');
+        console.error('Error deleting file:', error);
+        event.sender.send('download-error', 'Error deleting file.');
     }
 });
 
-ipcMain.on('open-file-location', async (event, fileId) => {
+ipcMain.on('open-file-location', (event, fileId) => {
     try {
         validateIpcChannel('open-file-location');
+
         const file = downloadedFiles.find(f => f.id === fileId);
-        if (file && file.filePath) {
-            const open = (await import('open')).default;
-            await open(file.filePath);
+        const filePath = file?.filePath;
+
+        if (filePath && fs.existsSync(filePath)) {
+            shell.showItemInFolder(file.filePath); // Note: shell.showItemInFolder doesn't return a promise in Electron
+        } else {
+            event.sender.send('download-error', 'Arquivo não encontrado.');
         }
     } catch (error) {
         console.error('Erro ao abrir localização do arquivo:', error);
@@ -702,27 +666,27 @@ function createWindow() {
         mainWindow.show();
     });
 
-    mainWindow.loadFile('src/index.html');
+    mainWindow.loadFile('src/index.html').then(r =>{console.log(r)} );
 }
 
 // ============================================================================
 // APP LIFECYCLE
 // ============================================================================
+(async () => {
+try {
+    await app.whenReady();
 
-app.whenReady().then(async () => {
-    try {
-        await initializeBinaries();
-        logBinariesInfo(); // Log de informações dos binários
-        loadDownloadedFiles();
-        createWindow();
-    } catch (error) {
-        console.error('Erro ao inicializar aplicação:', error);
-        createWindow();
-    }
-
-    app.on('activate', function () {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
+    await initializeBinaries();
+    logBinariesInfo();
+    loadDownloadedFiles();
+    createWindow();
+} catch (error) {
+    console.error('Erro ao inicializar aplicação:', error);
+    createWindow();
+}
+})();
+app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
 app.on('window-all-closed', function () {
