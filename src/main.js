@@ -27,7 +27,7 @@ function isValidUrl(url) {
         const urlObj = new URL(url);
         return ['http:', 'https:'].includes(urlObj.protocol);
     } catch {
-        return false;
+        throw new Error('URL inválida');
     }
 }
 
@@ -41,7 +41,7 @@ function sanitizeArgs(args) {
 }
 
 function validateIpcChannel(channel) {
-    if (!ALLOWED_IPC_CHANNELS.includes(channel)) {
+    if (!ALLOWED_IPC_CHANNELS.has(channel)) {
         throw new Error(`Canal IPC não permitido: ${channel}`);
     }
 }
@@ -494,7 +494,7 @@ function ensureBinariesReadyOrNotify(event) {
     if (!fs.existsSync(ytdlpPath)) {
         ytdlpPath = getYtdlpPath();
         if (!ytdlpPath) {
-            event.sender.send('download-error', 'yt-dlp não encontrado.');
+            event.sender.send('download-error', 'yt-dlp not found.');
             return null;
         }
     }
@@ -502,7 +502,7 @@ function ensureBinariesReadyOrNotify(event) {
     if (!fs.existsSync(ffmpegPath)) {
         ffmpegPath = getFfmpegPath();
         if (!ffmpegPath) {
-            event.sender.send('download-error', 'ffmpeg não encontrado.');
+            event.sender.send('download-error', 'ffmpeg not found.');
             return null;
         }
     }
@@ -514,29 +514,38 @@ function ensureBinariesReadyOrNotify(event) {
 // IPC HANDLERS
 // ============================================================================
 
-ipcMain.on('download-video-with-settings', async (event, videoUrl, settings) => {
-    try {
-        validateIpcChannel('download-video-with-settings');
-
-        if (!validateVideoUrlOrNotify(event, videoUrl)) return;
-
-        const bin = ensureBinariesReadyOrNotify(event);
-        if (!bin) return;
-
-        const { ytdlpPath, ffmpegPath } = bin;
-
-        const videoInfo = await getVideoInfo(ytdlpPath, videoUrl);
-        if (!videoInfo) {
-            return event.sender.send('download-error', 'Falha ao obter informações do vídeo.');
+/**
+ * Cria um handler IPC com tratamento de erro e validação padronizados
+ * @param {string} channel - Nome do canal IPC
+ * @param {Function} handler - Função handler (pode ser async)
+ */
+function createIpcHandler(channel, handler) {
+    ipcMain.on(channel, async (event, ...args) => {
+        try {
+            validateIpcChannel(channel);
+            await handler(event, ...args);
+        } catch (error) {
+            console.error(`Erro no canal '${channel}':`, error);
+            event.sender.send('download-error', error.message || 'Erro interno desconhecido');
         }
+    });
+}
 
-        const args = buildDownloadArgs(settings, videoUrl, ffmpegPath, videoInfo.acodec);
-        runYtdlpProcess(event, ytdlpPath, args, videoUrl);
+createIpcHandler('download-video-with-settings', async (event, videoUrl, settings) => {
+    if (!validateVideoUrlOrNotify(event, videoUrl)) return;
 
-    } catch (error) {
-        console.error('Erro no download:', error);
-        event.sender.send('download-error', `Erro no download: ${error.message}`);
+    const bin = ensureBinariesReadyOrNotify(event);
+    if (!bin) return;
+
+    const { ytdlpPath, ffmpegPath } = bin;
+
+    const videoInfo = await getVideoInfo(ytdlpPath, videoUrl);
+    if (!videoInfo) {
+        throw new Error('Failed to get video information.');
     }
+
+    const args = buildDownloadArgs(settings, videoUrl, ffmpegPath, videoInfo.acodec);
+    runYtdlpProcess(event, ytdlpPath, args, videoUrl);
 });
 
 ipcMain.on('download-video', async (event, videoUrl) => {
@@ -584,65 +593,40 @@ ipcMain.on('check-binaries-status', (event) => {
         console.error('Erro ao verificar status dos binários:', error);
         event.sender.send('binaries-status', {
             status: 'error',
-            message: 'Erro interno ao verificar binários'
+            message: `Erro interno: ${error.message} \n ${error.stack}`
         });
     }
 });
 
-ipcMain.on('open-downloads-folder', async (event) => {
-    try {
-        validateIpcChannel('open-downloads-folder');
-        const downloadsPath = app.getPath('downloads');
-        await shell.openPath(downloadsPath);
-    } catch (error) {
-        console.error('Erro ao abrir a pasta de downloads:', error);
-        event.sender.send('download-error', 'Não foi possível abrir a pasta de downloads.');
-    }
+createIpcHandler('open-downloads-folder', async (event) => {
+    const downloadsPath = app.getPath('downloads');
+    await shell.openPath(downloadsPath);
 });
 
-ipcMain.on('get-downloaded-files', (event) => {
-    try {
-        validateIpcChannel('get-downloaded-files');
-        const files = getDownloadedFiles();
-        event.sender.send('downloaded-files-list', files);
-    } catch (error) {
-        console.error('Erro ao obter arquivos baixados:', error);
-        event.sender.send('download-error', 'Erro ao carregar arquivos baixados.');
-    }
+createIpcHandler('get-downloaded-files', (event) => {
+    const files = getDownloadedFiles();
+    event.sender.send('downloaded-files-list', files);
 });
 
-ipcMain.on('delete-downloaded-file', (event, fileId) => {
-    try {
-        validateIpcChannel('delete-downloaded-file');
-        const file = downloadedFiles.find(f => f.id === fileId);
+createIpcHandler('delete-downloaded-file', (event, fileId) => {
+    const file = downloadedFiles.find(f => f.id === fileId);
 
-        if (file?.filePath && fs.existsSync(file.filePath)) {
-            fs.unlinkSync(file.filePath);
-        }
-
-        removeDownloadedFile(fileId);
-        event.sender.send('file-deleted', fileId);
-    } catch (error) {
-        console.error('Error deleting file:', error);
-        event.sender.send('download-error', 'Error deleting file.');
+    if (file?.filePath && fs.existsSync(file.filePath)) {
+        fs.unlinkSync(file.filePath);
     }
+
+    removeDownloadedFile(fileId);
+    event.sender.send('file-deleted', fileId);
 });
 
-ipcMain.on('open-file-location', (event, fileId) => {
-    try {
-        validateIpcChannel('open-file-location');
+createIpcHandler('open-file-location', (event, fileId) => {
+    const file = downloadedFiles.find(f => f.id === fileId);
+    const filePath = file?.filePath;
 
-        const file = downloadedFiles.find(f => f.id === fileId);
-        const filePath = file?.filePath;
-
-        if (filePath && fs.existsSync(filePath)) {
-            shell.showItemInFolder(file.filePath); // Note: shell.showItemInFolder doesn't return a promise in Electron
-        } else {
-            event.sender.send('download-error', 'Arquivo não encontrado.');
-        }
-    } catch (error) {
-        console.error('Erro ao abrir localização do arquivo:', error);
-        event.sender.send('download-error', 'Erro ao abrir localização do arquivo.');
+    if (filePath && fs.existsSync(filePath)) {
+        shell.showItemInFolder(file.filePath);
+    } else {
+        throw new Error('Arquivo não encontrado.');
     }
 });
 

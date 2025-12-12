@@ -1,7 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const { execSync } = require('child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const https = require('node:https');  
+const { execSync } = require('node:child_process');
 
 // --- validações iniciais ----------------------------------------------------
 
@@ -15,7 +15,7 @@ function isWin() {
 
 function makeExecutable(p) {
   if (!isWin()) {
-    try { runCommand(`chmod +x '${p}'`); } catch (e) { console.log("Cant make executable"); }
+    try { runCommand(`chmod +x '${p}'`); } catch (e) { throw new Error(`Couldn't make ${p} executable`); }
   }
 }
 
@@ -24,16 +24,16 @@ function checkDiskSpace(dirPath) {
     if (isWin()) {
       const drive = dirPath.charAt(0).toUpperCase();
       const result = execSync(
-        `powershell -NoProfile -Command "(Get-WmiObject -Class Win32_LogicalDisk -Filter \\"DeviceID='${drive}:'\\").FreeSpace"`,
+        String.raw`powershell -NoProfile -Command "(Get-WmiObject -Class Win32_LogicalDisk -Filter \"DeviceID='${drive}:'\").FreeSpace"`,
         { encoding: 'utf8' }
       );
-      return parseInt(result.trim(), 10);
+      return Number.parseInt(result.trim(), 10);
     } else {
       const result = execSync(`df -k '${dirPath}' | tail -1 | awk '{print $4}'`, { encoding: 'utf8' });
-      return parseInt(result.trim(), 10) * 1024;
+      return Number.parseInt(result.trim(), 10) * 1024;
     }
   } catch (error) {
-    console.warn('Não foi possível verificar espaço em disco:', error.message);
+    console.warn('Could not check disk space:', error.message);
     return null;
   }
 }
@@ -100,16 +100,19 @@ class BinaryDownloader {
       win32: {
         ytdlp: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
         aria2c: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip',
+        // Usar release build do gyan.dev que é mais estável
         ffmpeg: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
       },
       darwin: {
         ytdlp: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
+         // Mac geralmente já tem curl/aria2 via brew, mas aqui mantemos o link
         aria2c: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-osx-darwin-build1.tar.bz2',
         ffmpeg: 'https://evermeet.cx/ffmpeg/ffmpeg-6.1.1.zip'
       },
       linux: {
         ytdlp: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp',
         aria2c: 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-linux-gnu-build1.tar.bz2',
+        // Usar static build do johnvansickle
         ffmpeg: 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz'
       }
     };

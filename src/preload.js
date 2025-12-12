@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const ALLOWED_IPC_CHANNELS = [
+const ALLOWED_IPC_CHANNELS = new Set([
   'download-video',
   'download-video-with-settings',
   'check-binaries-status',
@@ -14,65 +14,50 @@ const ALLOWED_IPC_CHANNELS = [
   'open-file-location',
   'downloaded-files-list',
   'file-deleted'
-];
+]);
 
 // Função para validar canal IPC
 function validateIpcChannel(channel) {
-  if (!ALLOWED_IPC_CHANNELS.includes(channel)) {
+  if (!ALLOWED_IPC_CHANNELS.has(channel)) {
     throw new Error(`Canal IPC não permitido: ${channel}`);
   }
 }
 
+// Helper functions para IPC
+const makeSender = (channel) => (...args) => ipcRenderer.send(channel, ...args);
+const makeListener = (channel) => (callback) => {
+  const newCB = (_, data) => callback(data);
+  ipcRenderer.on(channel, newCB);
+  return () => ipcRenderer.removeListener(channel, newCB);
+};
+
 contextBridge.exposeInMainWorld('electronAPI', {
-  // One-way from renderer to main
+  // Generic methods (continuam úteis para flexibilidade, mantendo validação)
   send: (channel, data) => {
     validateIpcChannel(channel);
     ipcRenderer.send(channel, data);
   },
-  // One-way from main to renderer
   on: (channel, callback) => {
     validateIpcChannel(channel);
     const newCallback = (_, data) => callback(data);
     ipcRenderer.on(channel, newCallback);
-    // Return a function to remove the listener
     return () => ipcRenderer.removeListener(channel, newCallback);
   },
-  // Métodos específicos para facilitar o uso
-  downloadVideo: (url) => ipcRenderer.send('download-video', url),
-  downloadVideoWithSettings: (url, settings) => ipcRenderer.send('download-video-with-settings', url, settings),
-  checkBinariesStatus: () => ipcRenderer.send('check-binaries-status'),
-  openDownloadsFolder: () => ipcRenderer.send('open-downloads-folder'),
-  getDownloadedFiles: () => ipcRenderer.send('get-downloaded-files'),
-  deleteDownloadedFile: (fileId) => ipcRenderer.send('delete-downloaded-file', fileId),
-  openFileLocation: (fileId) => ipcRenderer.send('open-file-location', fileId),
-  onDownloadProgress: (callback) => {
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on('download-progress', newCallback);
-    return () => ipcRenderer.removeListener('download-progress', newCallback);
-  },
-  onDownloadSuccess: (callback) => {
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on('download-success', newCallback);
-    return () => ipcRenderer.removeListener('download-success', newCallback);
-  },
-  onDownloadError: (callback) => {
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on('download-error', newCallback);
-    return () => ipcRenderer.removeListener('download-error', newCallback);
-  },
-  onBinariesStatus: (callback) => {
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on('binaries-status', newCallback);
-    return () => ipcRenderer.removeListener('binaries-status', newCallback);
-  },
-  onDownloadedFilesList: (callback) => {
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on('downloaded-files-list', newCallback);
-    return () => ipcRenderer.removeListener('downloaded-files-list', newCallback);
-  },
-  onFileDeleted: (callback) => {
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on('file-deleted', newCallback);
-    return () => ipcRenderer.removeListener('file-deleted', newCallback);
-  }
+
+  // Métodos específicos usando os helpers
+  downloadVideo: makeSender('download-video'),
+  downloadVideoWithSettings: makeSender('download-video-with-settings'),
+  checkBinariesStatus: makeSender('check-binaries-status'),
+  openDownloadsFolder: makeSender('open-downloads-folder'),
+  getDownloadedFiles: makeSender('get-downloaded-files'),
+  deleteDownloadedFile: makeSender('delete-downloaded-file'),
+  openFileLocation: makeSender('open-file-location'),
+
+  // Listeners específicos usando os helpers
+  onDownloadProgress: makeListener('download-progress'),
+  onDownloadSuccess: makeListener('download-success'),
+  onDownloadError: makeListener('download-error'),
+  onBinariesStatus: makeListener('binaries-status'),
+  onDownloadedFilesList: makeListener('downloaded-files-list'),
+  onFileDeleted: makeListener('file-deleted')
 });

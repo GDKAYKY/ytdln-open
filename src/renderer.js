@@ -137,20 +137,21 @@ function isValidUrl(url) {
 
 // Verificar status dos binários ao carregar a página
 window.addEventListener('DOMContentLoaded', () => {
-  updateStatus('Verificando binários...');
-  window.electronAPI.checkBinariesStatus();
-  
-  // Carregar configurações salvas
+  // 1. Configurar UI e Event Listeners (Prioridade)
   loadSettings();
-  
-  // Event listeners para o modal
   setupModalEvents();
-  
-  // Event listeners para as abas
   setupTabEvents();
-  
-  // Event listeners para controles
   setupControlEvents();
+
+  // 2. Inicializar comunicação com Backend
+  updateStatus('Verificando binários...');
+  
+  if (window.electronAPI) {
+    window.electronAPI.checkBinariesStatus();
+  } else {
+    console.error('CRITICAL: window.electronAPI is not defined. Preload script might have failed.');
+    updateStatus('Erro Crítico: API do Electron não carregada. Verifique o console.');
+  }
 });
 
 // Configurar eventos do modal
