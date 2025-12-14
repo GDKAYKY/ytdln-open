@@ -102,66 +102,20 @@ function findSystemBinary(binaryName) {
     }
 }
 
-/**
- * Obtém o caminho do FFmpeg com fallback para binário do sistema
- * @returns {string|null}
- */
-function getFfmpegPath() {
-    // Tenta usar binário empacotado primeiro
-    if (binaryPaths?.ffmpeg && fs.existsSync(binaryPaths.ffmpeg)) {
-        return binaryPaths.ffmpeg;
-    }
-
-    // Fallback para binário do sistema
-    const systemFfmpeg = findSystemBinary('ffmpeg');
-    if (systemFfmpeg && fs.existsSync(systemFfmpeg)) {
-        console.log('Usando FFmpeg do sistema:', systemFfmpeg);
-        return systemFfmpeg;
-    }
-
-    console.error('FFmpeg não encontrado');
-    return null;
-}
-
-/**
- * Obtém o caminho do yt-dlp com fallback para binário do sistema
- * @returns {string|null}
- */
-function getYtdlpPath() {
-    // Tenta usar binário empacotado primeiro
-    if (binaryPaths?.ytdlp && fs.existsSync(binaryPaths.ytdlp)) {
-        return binaryPaths.ytdlp;
-    }
-
-    // Fallback para binário do sistema
-    const systemYtdlp = findSystemBinary('yt-dlp');
-    if (systemYtdlp && fs.existsSync(systemYtdlp)) {
-        console.log('Usando yt-dlp do sistema:', systemYtdlp);
-        return systemYtdlp;
-    }
-
-    console.error('yt-dlp não encontrado');
-    return null;
-}
-
-/**
- * Escaneia a pasta de downloads por novos arquivos de vídeo
- */
 function scanDownloadsDir() {
     try {
         const downloadsPath = app.getPath('downloads');
         if (!fs.existsSync(downloadsPath)) return;
 
         const files = fs.readdirSync(downloadsPath);
-        const videoExtensions = ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv'];
+        const videoExtensions = new Set(['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv']);
         let newFilesFound = false;
 
         files.forEach(file => {
             const ext = path.extname(file).toLowerCase();
-            if (videoExtensions.includes(ext)) {
+            if (videoExtensions.has(ext)) {
                 const filePath = path.join(downloadsPath, file);
                 
-                // Verifica se o arquivo já está sendo rastreado pelo caminho
                 const isTracked = downloadedFiles.some(f => f.filePath === filePath);
                 
                 if (!isTracked) {
@@ -169,7 +123,6 @@ function scanDownloadsDir() {
                         const stats = fs.statSync(filePath);
                         const thumbnailPath = findThumbnailForFile(filePath);
                         
-                        // Adiciona diretamente para evitar múltiplos saves e loops
                         downloadedFiles.unshift({
                             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
                             title: path.parse(file).name,
@@ -180,7 +133,7 @@ function scanDownloadsDir() {
                             format: ext.substring(1).toUpperCase(),
                             thumbnail: thumbnailPath,
                             downloadDate: stats.birthtime,
-                            url: '' // URL desconhecida para arquivos externos
+                            url: '' 
                         });
                         newFilesFound = true;
                     } catch (e) {
@@ -195,50 +148,6 @@ function scanDownloadsDir() {
         console.error("Erro ao escanear pasta de downloads:", err);
         return false;
     }
-}
-
-/**
- * Valida todos os binários necessários
- * @param {Object} paths - Objeto com os caminhos dos binários
- * @returns {boolean}
- */
-
-/**
- * Obtém a versão de um binário
- * @param {string} binaryPath - Caminho para o binário
- * @param {string} versionFlag - Flag para obter versão (--version ou -version)
- * @returns {string|null}
- */
-function getBinaryVersion(binaryPath, versionFlag = '--version') {
-    const output = safeExecFile(binaryPath, [versionFlag]);
-    if (!output) return null;
-
-    // Extrai apenas a primeira linha (geralmente contém a versão)
-    return output.split('\n')[0].trim();
-}
-
-/**
- * Loga informações sobre os binários
- */
-function logBinariesInfo() {
-    if (!binaryPaths) return;
-
-    console.log('='.repeat(60));
-    console.log('INFORMAÇÕES DOS BINÁRIOS');
-    console.log('='.repeat(60));
-
-    const ytdlpVersion = getBinaryVersion(binaryPaths.ytdlp);
-    const ffmpegVersion = getBinaryVersion(binaryPaths.ffmpeg, '-version');
-
-    console.log('yt-dlp:');
-    console.log('  Path:', binaryPaths.ytdlp);
-    console.log('  Version:', ytdlpVersion || 'Desconhecida');
-
-    console.log('\nFFmpeg:');
-    console.log('  Path:', binaryPaths.ffmpeg);
-    console.log('  Version:', ffmpegVersion || 'Desconhecida');
-
-    console.log('='.repeat(60));
 }
 
 // ============================================================================
@@ -303,17 +212,16 @@ function saveDownloadedFiles() {
 
 function addDownloadedFile(fileInfo) {
     const fileData = {
-        id: fileInfo.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        title: fileInfo.title || 'Unknown Title',
-        url: fileInfo.url || '',
-        filePath: fileInfo.filePath || '',
-        fileName: fileInfo.fileName || '',
-        fileSize: fileInfo.fileSize || 0,
-        duration: fileInfo.duration || 0,
-        thumbnail: fileInfo.thumbnail || '',
-        format: fileInfo.format || '',
-        downloadDate: new Date().toISOString(),
-        ...fileInfo
+    id: fileInfo.id ?? crypto.randomUUID(),
+    title: fileInfo.title ?? 'Unknown Title',
+    url: fileInfo.url ?? '',
+    filePath: fileInfo.filePath ?? '',
+    fileName: fileInfo.fileName ?? '',
+    fileSize: fileInfo.fileSize ?? 0,
+    duration: fileInfo.duration ?? 0,
+    thumbnail: fileInfo.thumbnail ?? '',
+    format: fileInfo.format ?? '',
+    downloadDate: fileInfo.downloadDate ?? new Date().toISOString()
     };
 
     downloadedFiles.unshift(fileData);
@@ -322,15 +230,17 @@ function addDownloadedFile(fileInfo) {
 }
 
 function removeDownloadedFile(fileId) {
-    downloadedFiles = downloadedFiles.filter(file => file.id !== fileId);
+  const before = downloadedFiles.length;
+  downloadedFiles = downloadedFiles.filter(f => f.id !== fileId);
+
+  if (downloadedFiles.length !== before) {
     saveDownloadedFiles();
+    return true;
+  }
+  return false;
 }
 
-/**
- * Procura por um arquivo de thumbnail correspondente ao vídeo
- * @param {string} videoFilePath - Caminho completo do arquivo de vídeo
- * @returns {string} Caminho da thumbnail ou string vazia
- */
+
 function findThumbnailForFile(videoFilePath) {
     if (!videoFilePath) return '';
     
@@ -711,7 +621,7 @@ ipcMain.on('check-binaries-status', (event) => {
     }
 });
 
-createIpcHandler('open-downloads-folder', async (event) => {
+createIpcHandler('open-downloads-folder', async () => {
     const downloadsPath = app.getPath('downloads');
     await shell.openPath(downloadsPath);
 });
