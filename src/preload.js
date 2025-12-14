@@ -12,6 +12,7 @@ const ALLOWED_IPC_CHANNELS = new Set([
   'get-downloaded-files',
   'delete-downloaded-file',
   'open-file-location',
+  'open-video-file',
   'downloaded-files-list',
   'file-deleted'
 ]);
@@ -52,6 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDownloadedFiles: makeSender('get-downloaded-files'),
   deleteDownloadedFile: makeSender('delete-downloaded-file'),
   openFileLocation: makeSender('open-file-location'),
+  openVideoFile: makeSender('open-video-file'),
 
   // Listeners específicos usando os helpers
   onDownloadProgress: makeListener('download-progress'),

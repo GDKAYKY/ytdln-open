@@ -37,11 +37,12 @@ const defaultSettings = {
     extractorRetries: 3,
     noCheckCertificate: true,
     ignoreErrors: true,
-    writeThumbnail: false,
+    writeThumbnail: true,
     writeDescription: false
 };
 
 // Carregar configurações salvas
+
 let currentSettings = { ...defaultSettings };
 
 // Funções para gerenciar configurações
@@ -481,7 +482,7 @@ function addFileActionListeners() {
       const fileId = e.target.closest('.download-item').dataset.fileId;
       const file = downloadedFilesList.find(f => f.id == fileId);
       if (file) {
-        window.electronAPI.openFileLocation(file.id);
+        window.electronAPI.openVideoFile(file.id);
       }
     });
   });

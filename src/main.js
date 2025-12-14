@@ -15,7 +15,9 @@ const ALLOWED_IPC_CHANNELS = new Set([
     'open-downloads-folder',
     'get-downloaded-files',
     'delete-downloaded-file',
-    'open-file-location'
+    'delete-downloaded-file',
+    'open-file-location',
+    'open-video-file'
 ]);
 
 // ============================================================================
@@ -143,6 +145,59 @@ function getYtdlpPath() {
 }
 
 /**
+ * Escaneia a pasta de downloads por novos arquivos de vídeo
+ */
+function scanDownloadsDir() {
+    try {
+        const downloadsPath = app.getPath('downloads');
+        if (!fs.existsSync(downloadsPath)) return;
+
+        const files = fs.readdirSync(downloadsPath);
+        const videoExtensions = ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv'];
+        let newFilesFound = false;
+
+        files.forEach(file => {
+            const ext = path.extname(file).toLowerCase();
+            if (videoExtensions.includes(ext)) {
+                const filePath = path.join(downloadsPath, file);
+                
+                // Verifica se o arquivo já está sendo rastreado pelo caminho
+                const isTracked = downloadedFiles.some(f => f.filePath === filePath);
+                
+                if (!isTracked) {
+                    try {
+                        const stats = fs.statSync(filePath);
+                        const thumbnailPath = findThumbnailForFile(filePath);
+                        
+                        // Adiciona diretamente para evitar múltiplos saves e loops
+                        downloadedFiles.unshift({
+                            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                            title: path.parse(file).name,
+                            fileName: file,
+                            filePath: filePath,
+                            fileSize: stats.size,
+                            duration: 0,
+                            format: ext.substring(1).toUpperCase(),
+                            thumbnail: thumbnailPath,
+                            downloadDate: stats.birthtime,
+                            url: '' // URL desconhecida para arquivos externos
+                        });
+                        newFilesFound = true;
+                    } catch (e) {
+                        console.error("Erro ao processar arquivo encontrado:", file, e);
+                    }
+                }
+            }
+        });
+        
+        return newFilesFound;
+    } catch (err) {
+        console.error("Erro ao escanear pasta de downloads:", err);
+        return false;
+    }
+}
+
+/**
  * Valida todos os binários necessários
  * @param {Object} paths - Objeto com os caminhos dos binários
  * @returns {boolean}
@@ -248,6 +303,7 @@ function saveDownloadedFiles() {
 
 function addDownloadedFile(fileInfo) {
     const fileData = {
+        id: fileInfo.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
         title: fileInfo.title || 'Unknown Title',
         url: fileInfo.url || '',
         filePath: fileInfo.filePath || '',
@@ -270,14 +326,69 @@ function removeDownloadedFile(fileId) {
     saveDownloadedFiles();
 }
 
-function getDownloadedFiles() {
-    return downloadedFiles.filter(file => {
-        if (file.filePath && fs.existsSync(file.filePath)) {
-            return true;
+/**
+ * Procura por um arquivo de thumbnail correspondente ao vídeo
+ * @param {string} videoFilePath - Caminho completo do arquivo de vídeo
+ * @returns {string} Caminho da thumbnail ou string vazia
+ */
+function findThumbnailForFile(videoFilePath) {
+    if (!videoFilePath) return '';
+    
+    try {
+        const dir = path.dirname(videoFilePath);
+        const ext = path.extname(videoFilePath);
+        const baseName = path.basename(videoFilePath, ext);
+        
+        // Extensões de imagem comuns para thumbnails
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+        
+        for (const imgExt of imageExtensions) {
+            const thumbPath = path.join(dir, baseName + imgExt);
+            if (fs.existsSync(thumbPath)) {
+                return thumbPath;
+            }
         }
-        removeDownloadedFile(file.id);
-        return false;
-    });
+    } catch (error) {
+        console.error('Erro ao procurar thumbnail:', error);
+    }
+    return '';
+}
+
+function getDownloadedFiles() {
+    // Escanear pasta por novos arquivos antes de processar
+    if (scanDownloadsDir()) {
+        console.log('Novos arquivos detectados durante o scan.');
+    }
+
+    let changed = false;
+    const validFiles = [];
+    const idsToRemove = [];
+
+    // Validar arquivos e buscar thumbnails perdidas
+    for (const file of downloadedFiles) {
+        if (file.filePath && fs.existsSync(file.filePath)) {
+            // Se não tem thumbnail ou ela não existe mais, tenta encontrar
+            if (!file.thumbnail || !fs.existsSync(file.thumbnail)) {
+                const thumb = findThumbnailForFile(file.filePath);
+                if (thumb) {
+                    file.thumbnail = thumb;
+                    changed = true;
+                }
+            }
+            validFiles.push(file);
+        } else {
+            idsToRemove.push(file.id);
+        }
+    }
+
+    if (idsToRemove.length > 0) {
+        downloadedFiles = validFiles;
+        saveDownloadedFiles();
+    } else if (changed) {
+        saveDownloadedFiles();
+    }
+
+    return downloadedFiles;
 }
 
 function trackDownloadedFile(videoUrl) {
@@ -300,6 +411,7 @@ function trackDownloadedFile(videoUrl) {
         }, videoFiles[0]); // Use first element as initial value
 
         const filePath = path.join(downloadsPath, latestFile);
+        const thumbnailPath = findThumbnailForFile(filePath);
         const stats = fs.statSync(filePath);
 
         addDownloadedFile({
@@ -308,7 +420,8 @@ function trackDownloadedFile(videoUrl) {
             filePath: filePath,
             fileSize: stats.size,
             format: path.extname(latestFile).substring(1).toUpperCase(),
-            url: videoUrl
+            url: videoUrl,
+            thumbnail: thumbnailPath
         });
     } catch (error) {
         console.error('Error tracking downloaded file:', error);
@@ -643,6 +756,7 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            webSecurity: false // Permitir carregar recursos locais (thumbnails)
         }
     });
 
