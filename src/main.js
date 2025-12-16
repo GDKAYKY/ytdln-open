@@ -149,10 +149,8 @@ let binaryPaths = null;
 
 // INICIO
 async function initializeBinaries() {
-    let binaryPaths; // Declara binaryPaths no escopo da função
-
     try {
-        const videoDownloader = new VideoDownloader();
+        videoDownloader = new VideoDownloader();
         await videoDownloader.init();
         binaryPaths = videoDownloader.binaries;
 
@@ -170,8 +168,7 @@ async function initializeBinaries() {
         if (fallbackPaths.ytdlp && fallbackPaths.ffmpeg) {
             console.log('Usando binários do sistema como fallback');
             
-            // REMOVIDA: A atribuição 'binaryPaths = fallbackPaths;' é desnecessária
-            // se o valor retornado for fallbackPaths.
+            binaryPaths = fallbackPaths; // Atualiza a variável global
 
             return fallbackPaths; // Retorna os caminhos do sistema
         }

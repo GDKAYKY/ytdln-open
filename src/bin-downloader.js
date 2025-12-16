@@ -163,7 +163,7 @@ class BinaryDownloader {
     }
 
     cleanup();
-    return binaryPaths;
+    return binaryPaths.ytdlp, binaryPaths.ffmpeg, binaryPaths.ffprobe, binaryPaths.ffplay;
   }
 }
 module.exports = BinaryDownloader;
