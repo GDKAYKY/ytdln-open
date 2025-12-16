@@ -3,7 +3,7 @@ const path = require('node:path');
 const { spawn, execFileSync, execFile } = require('node:child_process');
 const BinaryDownloader = require('./bin-downloader');
 // INICIO
-const VideoDownloader = require('./videodownloader');
+const VideoDownloader = require('./video-downloader');
 // FIM
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -59,7 +59,7 @@ function safeExecFile(command, args = [], options = {}) {
     try {
         const result = execFileSync(command, args, {
             encoding: 'utf8',
-            timeout: 10,
+            timeout: 1000,
             ...options
         });
         return result.trim();
@@ -639,7 +639,6 @@ try {
     await app.whenReady();
 
     await initializeBinaries();
-    logBinariesInfo();
     loadDownloadedFiles();
     createWindow();
 } catch (error) {

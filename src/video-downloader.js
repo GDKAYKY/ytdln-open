@@ -10,7 +10,7 @@ class VideoDownloader {
      */
     async init() {
         const downloader = new BinaryDownloader();
-        this.binaries = await downloader.checkAndDownloadBinaries();
+        this.binaries = await downloader.ensureAll();
     }
 
     async getVideoInfo(videoUrl) {
