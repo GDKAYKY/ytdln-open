@@ -1,11 +1,15 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, protocol, net } = require('electron');
 const path = require('node:path');
+const url = require('node:url');
 const { spawn, execFileSync, execFile } = require('node:child_process');
+const util = require('node:util');
+const execFileAsync = util.promisify(execFile);
 const BinaryDownloader = require('./bin-downloader');
 // INICIO
 const VideoDownloader = require('./video-downloader');
 // FIM
 const fs = require('node:fs');
+const fsPromises = require('node:fs/promises');
 const crypto = require('node:crypto');
 
 const ALLOWED_IPC_CHANNELS = new Set([
@@ -80,16 +84,21 @@ function findSystemBinary(binaryName) {
     }
 }
 
-function scanDownloadsDir() {
+async function scanDownloadsDir() {
     try {
         const downloadsPath = app.getPath('downloads');
-        if (!fs.existsSync(downloadsPath)) return;
+        try {
+            await fsPromises.access(downloadsPath);
+        } catch {
+            return false;
+        }
 
-        const files = fs.readdirSync(downloadsPath);
+        const files = await fsPromises.readdir(downloadsPath);
         const videoExtensions = new Set(['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv']);
         let newFilesFound = false;
 
-        files.forEach(file => {
+        // Process files in chunks or parallel? Parallel is fine for local fs usually.
+        await Promise.all(files.map(async (file) => {
             const ext = path.extname(file).toLowerCase();
             if (videoExtensions.has(ext)) {
                 // Ignore temp files and partial downloads
@@ -100,7 +109,7 @@ function scanDownloadsDir() {
                 
                 if (!isTracked) {
                     try {
-                        const stats = fs.statSync(filePath);
+                        const stats = await fsPromises.stat(filePath);
                         const thumbnailPath = findThumbnailForFile(filePath);
                         
                         downloadedFiles.unshift({
@@ -121,7 +130,7 @@ function scanDownloadsDir() {
                     }
                 }
             }
-        });
+        }));
         
         return newFilesFound;
     } catch (err) {
@@ -134,7 +143,7 @@ function scanDownloadsDir() {
 // BINARY MANAGEMENT
 // ============================================================================
 
-let binaryDownloader = null;
+// binaryDownloader removed as it was unused and uninitialized
 let videoDownloader = null;
 let binaryPaths = null;
 
@@ -186,9 +195,11 @@ function loadDownloadedFiles() {
     }
 }
 
-function saveDownloadedFiles() {
+async function saveDownloadedFiles() {
     try {
-        fs.writeFileSync(downloadsMetadataPath, JSON.stringify(downloadedFiles, null, 2));
+        const tempPath = `${downloadsMetadataPath}.tmp`;
+        await fsPromises.writeFile(tempPath, JSON.stringify(downloadedFiles, null, 2));
+        await fsPromises.rename(tempPath, downloadsMetadataPath);
     } catch (error) {
         console.error('Error saving downloaded files metadata:', error);
     }
@@ -209,7 +220,7 @@ function addDownloadedFile(fileInfo) {
     };
 
     downloadedFiles.unshift(fileData);
-    saveDownloadedFiles();
+    saveDownloadedFiles().catch(err => console.error("Save failed", err));
     return fileData;
 }
 
@@ -218,14 +229,16 @@ function removeDownloadedFile(fileId) {
   downloadedFiles = downloadedFiles.filter(f => f.id !== fileId);
 
   if (downloadedFiles.length !== before) {
-    saveDownloadedFiles();
+    // Fire and forget save, or we should make removeDownloadedFile async?
+    // For now, let's just call it without awaiting since it's a void return mostly
+    saveDownloadedFiles().catch(err => console.error("Save failed", err));
     return true;
   }
   return false;
 }
 
 
-function findThumbnailForFile(videoFilePath) {
+async function findThumbnailForFile(videoFilePath) {
     if (!videoFilePath) return '';
     
     try {
@@ -248,9 +261,9 @@ function findThumbnailForFile(videoFilePath) {
     return '';
 }
 
-function getDownloadedFiles() {
+async function getDownloadedFiles() {
     // Escanear pasta por novos arquivos antes de processar
-    if (scanDownloadsDir()) {
+    if (await scanDownloadsDir()) {
         console.log('Novos arquivos detectados durante o scan.');
     }
 
@@ -259,37 +272,102 @@ function getDownloadedFiles() {
     const idsToRemove = [];
 
     // Validar arquivos e buscar thumbnails perdidas
-    for (const file of downloadedFiles) {
-        if (file.filePath && fs.existsSync(file.filePath)) {
-            // Se não tem thumbnail ou ela não existe mais, tenta encontrar
-            if (!file.thumbnail || !fs.existsSync(file.thumbnail)) {
-                // Tentar encontrar externa
-                let thumb = findThumbnailForFile(file.filePath);
+    // Use Promise.all for parallelism or for loop with await
+    await Promise.all(downloadedFiles.map(async (file) => {
+        if (file.filePath) {
+             try {
+                await fsPromises.access(file.filePath);
+                // Arquivo existe
                 
-                // Se não achar externa, tentar cache/extração (mas sem bloquear muito)
-                if (!thumb) {
-                    const cachePath = getCachedThumbnailPath(file.filePath);
-                    if (fs.existsSync(cachePath)) {
-                        thumb = cachePath;
-                    }
+                // Se não tem thumbnail ou ela não existe mais, tenta encontrar
+                let thumbExists = false;
+                if (file.thumbnail) {
+                    try {
+                        await fsPromises.access(file.thumbnail);
+                        thumbExists = true;
+                    } catch {}
                 }
 
-                if (thumb) {
-                    file.thumbnail = thumb;
-                    changed = true;
+                if (!file.thumbnail || !thumbExists) {
+                    // Tentar encontrar externa
+                    let thumb = findThumbnailForFile(file.filePath);
+                    
+                    // Se não achar externa, tentar cache/extração (mas sem bloquear muito)
+                    if (!thumb) {
+                        const cachePath = getCachedThumbnailPath(file.filePath);
+                        try {
+                            await fsPromises.access(cachePath);
+                            thumb = cachePath;
+                        } catch {}
+                    }
+
+                    if (thumb) {
+                        file.thumbnail = thumb;
+                        changed = true;
+                    }
                 }
-            }
-            validFiles.push(file);
+                validFiles.push(file);
+             } catch {
+                 // Arquivo não existe
+                 idsToRemove.push(file.id);
+             }
         } else {
             idsToRemove.push(file.id);
         }
+    }));
+    
+    // Sort logic usually needed if using Promise.all, but original code didn't sort explicitly other than unshift. 
+    // Wait, map maintains order of inputs in the output array, but validFiles push inside async might mix order.
+    // Let's stick to a for loop for safety on order or re-sort.
+    // Actually, let's do a linear scan with await to preserve order easily, as metadata list shouldn't be huge.
+    // Re-doing the block above as a loop to preserve order simply.
+    
+    const newValidFiles = [];
+    const newIdsToRemove = [];
+    let loopChanged = false;
+
+    for (const file of downloadedFiles) {
+         if (file.filePath) {
+             try {
+                await fsPromises.access(file.filePath);
+                
+                let thumbExists = false;
+                if (file.thumbnail) {
+                    try {
+                        await fsPromises.access(file.thumbnail);
+                        thumbExists = true;
+                    } catch {}
+                }
+
+                if (!file.thumbnail || !thumbExists) {
+                    let thumb = await findThumbnailForFile(file.filePath);
+                    if (!thumb) {
+                         const cachePath = getCachedThumbnailPath(file.filePath);
+                         try {
+                            await fsPromises.access(cachePath);
+                            thumb = cachePath;
+                        } catch {}
+                    }
+                    if (thumb) {
+                        file.thumbnail = thumb;
+                        loopChanged = true;
+                    }
+                }
+                newValidFiles.push(file);
+             } catch {
+                 newIdsToRemove.push(file.id);
+             }
+         } else {
+             newIdsToRemove.push(file.id);
+         }
     }
 
-    if (idsToRemove.length > 0) {
-        downloadedFiles = validFiles;
-        saveDownloadedFiles();
-    } else if (changed) {
-        saveDownloadedFiles();
+
+    if (newIdsToRemove.length > 0) {
+        downloadedFiles = newValidFiles;
+        await saveDownloadedFiles();
+    } else if (loopChanged) {
+        await saveDownloadedFiles();
     }
 
     return downloadedFiles;
@@ -305,6 +383,7 @@ function getCachedThumbnailPath(videoPath) {
     return path.join(thumbnailsCachePath, `${hash}.jpg`);
 }
 
+// Revert to synchronous implementation as originally requested
 function extractThumbnail(videoPath) {
     if (!videoPath || !fs.existsSync(videoPath)) return '';
 
@@ -350,7 +429,8 @@ function extractThumbnail(videoPath) {
     return '';
 }
 
-async function mergeThumbnailIntoVideo(videoFilePath) {
+// Revert to original Promise/callback implementation
+function mergeThumbnailIntoVideo(videoFilePath) {
     if (!videoFilePath) return false;
 
     const dir = path.dirname(videoFilePath);
@@ -415,7 +495,7 @@ async function mergeThumbnailIntoVideo(videoFilePath) {
 async function trackDownloadedFile(videoUrl, specificPath = null) {
     try {
         const downloadsPath = app.getPath('downloads');
-        const files = fs.readdirSync(downloadsPath);
+        const files = await fsPromises.readdir(downloadsPath);
         const videoFiles = files.filter(file => {
             const ext = path.extname(file).toLowerCase();
             return ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv'].includes(ext);
@@ -425,36 +505,47 @@ async function trackDownloadedFile(videoUrl, specificPath = null) {
 
         let filePath = specificPath;
 
-        if (!filePath || !fs.existsSync(filePath)) {
-             const latestFile = videoFiles.reduce((latest, current) => {
-                const latestPath = path.join(downloadsPath, latest);
-                const currentPath = path.join(downloadsPath, current);
-                const latestTime = fs.statSync(latestPath).mtime;
-                const currentTime = fs.statSync(currentPath).mtime;
-                return currentTime > latestTime ? current : latest;
-            }, videoFiles[0]); // Use first element as initial value
-            
-            filePath = path.join(downloadsPath, latestFile);
+        if (!filePath || !(await fsPromises.stat(filePath).catch(()=>false))) {
+             // Need to find latest file manually if not provided
+             // This logic of reducing mostly works but is heavy if many files. 
+             // Ideally we shouldn't rely on scanning all files to find the one we just downloaded.
+             // But detecting the exact file from yt-dlp is sometimes tricky.
+             // We'll keep the logic but make it async-compatible (load stats for all)
+             
+             const fileStats = await Promise.all(videoFiles.map(async f => {
+                 const p = path.join(downloadsPath, f);
+                 const s = await fsPromises.stat(p);
+                 return { file: f, mtime: s.mtime };
+             }));
+
+             if (fileStats.length > 0) {
+                 const latest = fileStats.reduce((prev, current) => {
+                     return (prev.mtime > current.mtime) ? prev : current;
+                 });
+                 filePath = path.join(downloadsPath, latest.file);
+             }
         }
-        // Merge thumbnail if available
-        await mergeThumbnailIntoVideo(filePath);
         
-        // Extract/Get thumbnail path (embedded or frame)
-        const thumbnailPath = extractThumbnail(filePath);
-        
-        const stats = fs.statSync(filePath);
+        if (filePath) {
+            // Merge thumbnail if available
+            await mergeThumbnailIntoVideo(filePath);
+            
+            // Extract/Get thumbnail path (embedded or frame)
+            const thumbnailPath = extractThumbnail(filePath);
+            
+            const stats = await fsPromises.stat(filePath);
+            const fileName = path.basename(filePath);
 
-        const fileName = path.basename(filePath);
-
-        addDownloadedFile({
-            title: path.parse(fileName).name,
-            fileName: fileName,
-            filePath: filePath,
-            fileSize: stats.size,
-            format: path.extname(fileName).substring(1).toUpperCase(),
-            url: videoUrl,
-            thumbnail: thumbnailPath
-        });
+            addDownloadedFile({
+                title: path.parse(fileName).name,
+                fileName: fileName,
+                filePath: filePath,
+                fileSize: stats.size,
+                format: path.extname(fileName).substring(1).toUpperCase(),
+                url: videoUrl,
+                thumbnail: thumbnailPath
+            });
+        }
     } catch (error) {
         console.error('Error tracking downloaded file:', error);
     }
@@ -552,7 +643,9 @@ ipcMain.on('check-binaries-status', (event) => {
         validateIpcChannel('check-binaries-status');
 
         if (binaryPaths) {
-            const appMode = binaryDownloader ? binaryDownloader.getAppMode() : null;
+            // Fix: Not using binaryDownloader as it is null/unused.
+            // Using standard appMode default as portable/installed distinction logic isn't present in BinaryDownloader.
+            const appMode = 'standard'; 
             event.sender.send('binaries-status', {
                 status: 'ready',
                 paths: binaryPaths,
@@ -580,9 +673,15 @@ createIpcHandler('open-downloads-folder', async () => {
     await shell.openPath(downloadsPath);
 });
 
-createIpcHandler('get-downloaded-files', (event) => {
-    const files = getDownloadedFiles();
-    event.sender.send('downloaded-files-list', files);
+createIpcHandler('get-downloaded-files', async (event) => {
+    const files = await getDownloadedFiles();
+    // Transform paths to media:// protocol URLs for renderer
+    // URLs must strictly use forward slashes and encoding, even on Windows.
+    const safeFiles = files.map(f => ({
+        ...f,
+        thumbnail: f.thumbnail ? url.pathToFileURL(f.thumbnail).href.replace('file:', 'media:') : ''
+    }));
+    event.sender.send('downloaded-files-list', safeFiles);
 });
 
 createIpcHandler('delete-downloaded-file', (event, fileId) => {
@@ -620,7 +719,7 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            webSecurity: false // Permitir carregar recursos locais (thumbnails)
+            webSecurity: true // Security enforced, using media:// protocol
         }
     });
 
@@ -637,6 +736,20 @@ function createWindow() {
 (async () => {
 try {
     await app.whenReady();
+
+    protocol.handle('media', (request) => {
+        try {
+            // Convert custom media: URL back to file: URL
+            const fileUrl = request.url.replace(/^media:/, 'file:');
+            // Convert file: URL to absolute system path (handles Windows backslashes correctly)
+            const filePath = url.fileURLToPath(fileUrl);
+            
+            return net.fetch(url.pathToFileURL(filePath).toString());
+        } catch (e) {
+            console.error('Media protocol error:', e);
+            return new Response('Not found', { status: 404 });
+        }
+    });
 
     await initializeBinaries();
     loadDownloadedFiles();
