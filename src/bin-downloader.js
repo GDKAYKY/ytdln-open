@@ -30,18 +30,34 @@ function downloadFile(url, outPath) {
     https.get(url, res => {
       // redirect (302 etc)
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        file.close();
         return downloadFile(res.headers.location, outPath)
           .then(resolve)
           .catch(reject);
       }
 
       if (res.statusCode !== 200) {
+        file.close();
         return reject(new Error(`HTTP ${res.statusCode}`));
       }
 
       res.pipe(file);
-      file.on('finish', () => file.close(resolve));
+      
+      file.on('finish', () => {
+        file.close(() => {
+          // ✅ Só resolve DEPOIS que o arquivo foi completamente fechado
+          resolve();
+        });
+      });
+      
+      file.on('error', err => {
+        file.close();
+        if (fs.existsSync(outPath)) fs.rmSync(outPath);
+        reject(err);
+      });
+      
     }).on('error', err => {
+      file.close();
       if (fs.existsSync(outPath)) fs.rmSync(outPath);
       reject(err);
     });
@@ -54,7 +70,7 @@ function extractZipWindows(zipPath, targetDir) {
     [
       '-NoProfile',
       '-Command',
-      `Expand-Archive -Force "${zipPath}" "${targetDir}"`
+      `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${targetDir}'`
     ],
     { stdio: 'ignore' }
   );
