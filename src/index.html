@@ -9,9 +9,43 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="loader.css">
+    <link rel="stylesheet" href="checkbox.css">
 </head>
 
 <body>
+    <!-- Pre-initialization Loader -->
+    <div id="app-loader" class="loader-overlay">
+        <canvas id="canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;"></canvas>
+        <div class="loader-content">
+            <div class="banter-loader">
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+                <div class="banter-loader__box"></div>
+            </div>
+            <div class="card">
+                <div class="loader-text-anim">
+                    <p>loading</p>
+                    <div class="words">
+                        <span class="word">modules</span>
+                        <span class="word">binaries</span>
+                        <span class="word">interface</span>
+                        <span class="word">system</span>
+                        <span class="word">modules</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Hidden status element for JS updates if needed -->
+            <p id="loader-status" class="loader-text" style="display: none;">Initializing components...</p>
+        </div>
+    </div>
+
     <div class="frame-container">
         <div class="background">
 
@@ -196,15 +230,30 @@
                             </div>
                             <div class="setting-item">
                                 <label for="embedSubs">Embed Subtitles:</label>
-                                <input type="checkbox" id="embedSubs">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="embedSubs">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                             <div class="setting-item">
                                 <label for="writeInfoJson">Write Info JSON:</label>
-                                <input type="checkbox" id="writeInfoJson">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="writeInfoJson">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                             <div class="setting-item">
                                 <label for="showConsole">Show Console:</label>
-                                <input type="checkbox" id="showConsole">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="showConsole">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                         </div>
 
@@ -236,19 +285,39 @@
                             </div>
                             <div class="setting-item">
                                 <label for="noCheckCertificate">No Check Certificate:</label>
-                                <input type="checkbox" id="noCheckCertificate">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="noCheckCertificate">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                             <div class="setting-item">
                                 <label for="ignoreErrors">Ignore Errors:</label>
-                                <input type="checkbox" id="ignoreErrors">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="ignoreErrors">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                             <div class="setting-item">
                                 <label for="writeThumbnail">Write Thumbnail:</label>
-                                <input type="checkbox" id="writeThumbnail">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="writeThumbnail">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                             <div class="setting-item">
                                 <label for="writeDescription">Write Description:</label>
-                                <input type="checkbox" id="writeDescription">
+                                <label class="checkbox-wrapper">
+                                    <input type="checkbox" id="writeDescription">
+                                    <svg viewBox="0 0 64 64" height="2em" width="2em">
+                                        <path d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16" pathLength="575.0541381835938" class="path"></path>
+                                    </svg>
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -261,6 +330,7 @@
             </div>
         </div>
     </div>
+    <script src="particle-loader.js"></script>
     <script src="renderer.js"></script>
 </body>
 

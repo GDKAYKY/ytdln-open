@@ -180,6 +180,11 @@ window.addEventListener('DOMContentLoaded', () => {
   // 2. Inicializar comunicação com Backend
   updateStatus('Verificando binários...');
   
+  // Start particle background
+  if (window.initParticleLoader) {
+    window.initParticleLoader();
+  }
+
   if (window.electronAPI) {
     window.electronAPI.checkBinariesStatus();
   } else {
@@ -275,15 +280,36 @@ function setupControlEvents() {
 
 // Listener para status dos binários
 window.electronAPI.onBinariesStatus((data) => {
+  const loader = document.getElementById('app-loader');
+  
   if (data.status === 'ready') {
     const appModeInfo = data.appMode ? ` | Modo: ${data.appMode.description}` : '';
     updateStatus(`Binários prontos! SO: ${data.platform} (${data.arch})${appModeInfo}`);
     downloadBtn.disabled = false;
+    
+    // Hide loader
+    if (loader) loader.classList.add('hidden');
+    
+  } else if (data.status === 'error') {
+     updateStatus(`Status: ${data.message}`);
+     downloadBtn.disabled = true;
+     
+     // Update loader text to show error instead of just hiding (or hide and show toast)
+     const loaderText = document.getElementById('loader-status');
+     if (loaderText) {
+       loaderText.textContent = "Error: " + data.message;
+       loaderText.style.color = "#ff6b6b";
+       // Don't hide loader so user sees the error
+     }
   } else {
     updateStatus(`Status: ${data.message}`);
     downloadBtn.disabled = true;
   }
 });
+
+const progressFrame = document.querySelector('.progress-frame');
+
+// ... exist code ...
 
 // Clear status on new download
 downloadBtn.addEventListener('click', () => {
@@ -305,6 +331,9 @@ downloadBtn.addEventListener('click', () => {
   // Visual state: downloading
   downloadBtn.classList.add('downloading');
   downloadBtn.innerHTML = '<span class="btn-shine">Baixando…</span>';
+  
+  // Show progress ring
+  if (progressFrame) progressFrame.classList.add('active');
   
   // Enviar configurações junto com a URL
   window.electronAPI.downloadVideoWithSettings(url, currentSettings);
@@ -365,53 +394,27 @@ function processToastQueue() {
 
   // Update toast content
   const toastText = document.querySelector('.toast-text');
-  const toastCheckmark = document.querySelector('.toast-checkmark svg path');
   const progressFill = document.querySelector('.progress-fill');
   
   toastText.textContent = message;
 
-  // Configure colors based on type
-  const colors = {
-    success: { bg: 'var(--color-dark-green-1)', border: 'var(--color-bright-green)', icon: '#28A745' },
-    error: { bg: '#2d1a1a', border: '#ff6b6b', icon: '#ff6b6b' },
-    info: { bg: '#1a2d3d', border: '#4a9eff', icon: '#4a9eff' },
-    warning: { bg: '#3d2d1a', border: '#ffa500', icon: '#ffa500' }
-  };
+  // Set type class
+  toastContainer.classList.remove('success', 'error', 'info', 'warning');
+  toastContainer.classList.add(type);
 
-  const color = colors[type] || colors.success;
-  
-  toastContainer.style.background = color.bg;
-  toastContainer.style.borderColor = color.border;
-  toastText.style.color = color.border;
-  
-  if (toastCheckmark) {
-    toastCheckmark.setAttribute('stroke', color.icon);
-  }
-
-  // Update close button color
-  const closeButton = document.querySelector('.toast-close svg path');
-  if (closeButton) {
-    closeButton.setAttribute('stroke', color.icon);
-  }
-
-  // Show toast with animation
-  toastContainer.style.display = 'block';
-  toastContainer.style.opacity = '0';
-  toastContainer.style.transform = 'translateY(20px)';
-  
-  // Trigger animation
-  requestAnimationFrame(() => {
-    toastContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-    toastContainer.style.opacity = '1';
-    toastContainer.style.transform = 'translateY(0)';
-  });
+  // Show toast
+  toastContainer.classList.add('show');
 
   // Reset and start progress animation
   if (progressFill) {
-    progressFill.style.animation = 'none';
+    progressFill.style.transition = 'none';
+    progressFill.style.width = '0%';
+    
     // Force reflow to restart animation
-    const reflow = progressFill.offsetHeight;
-    progressFill.style.animation = `progressFill ${duration}ms linear`;
+    void progressFill.offsetHeight;
+    
+    progressFill.style.transition = `width ${duration}ms linear`;
+    progressFill.style.width = '100%';
   }
 
   // Clear existing timeout
@@ -426,15 +429,12 @@ function processToastQueue() {
 }
 
 function hideToast() {
-  toastContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-  toastContainer.style.opacity = '0';
-  toastContainer.style.transform = 'translateY(20px)';
+  toastContainer.classList.remove('show');
   
   setTimeout(() => {
-    toastContainer.style.display = 'none';
     isToastVisible = false;
     processToastQueue(); // Process next toast in queue
-  }, 300);
+  }, 400); // Wait for transition
 }
 
 // Add click handler for close button
@@ -454,6 +454,21 @@ window.electronAPI.onDownloadSuccess(() => {
   // Restore button state
   downloadBtn.classList.remove('downloading');
   downloadBtn.textContent = 'Download';
+  
+  // Hide progress ring after a short delay to show 100%
+  setTimeout(() => {
+    if (progressFrame) progressFrame.classList.remove('active');
+    // Reset progress text/ring after animation
+    setTimeout(() => {
+      progressText.textContent = '0%';
+      const progressRing = document.getElementById('progressRing');
+      if (progressRing) {
+          const radius = progressRing.r.baseVal.value;
+          const circumference = radius * 2 * Math.PI;
+          progressRing.style.strokeDashoffset = circumference;
+      }
+    }, 300);
+  }, 1000);
 
   // Show success toast
   showToast('Download completed successfully!', 'success', 4000);
@@ -465,6 +480,9 @@ window.electronAPI.onDownloadError((errorMessage) => {
   // Restore button state on error
   downloadBtn.classList.remove('downloading');
   downloadBtn.textContent = 'Download';
+  
+  // Hide progress ring
+  if (progressFrame) progressFrame.classList.remove('active');
   
   // Show error toast
   showToast('Download failed! Check console for details.', 'error', 5000);

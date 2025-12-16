@@ -730,6 +730,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile('src/index.html').then(r =>{console.log(r)} );
+    return mainWindow;
 }
 
 // ============================================================================
@@ -753,12 +754,39 @@ try {
         }
     });
 
-    await initializeBinaries();
-    loadDownloadedFiles();
-    createWindow();
+    // Create window FIRST to show loading screen
+    const mainWindow = createWindow();
+
+    try {
+        console.log('Initializing binaries...');
+        await initializeBinaries();
+        
+        // Notify renderer that app is ready using existing channel
+        if (mainWindow && !mainWindow.isDestroyed()) {
+             const appMode = 'standard'; 
+             mainWindow.webContents.send('binaries-status', {
+                status: 'ready',
+                paths: binaryPaths,
+                platform: process.platform,
+                arch: process.arch,
+                appMode: appMode
+            });
+        }
+        
+        loadDownloadedFiles();
+
+    } catch (initError) {
+        console.error('Binary initialization failed:', initError);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('binaries-status', {
+                status: 'error', 
+                message: `Failed to initialize binaries: ${initError.message}`
+            });
+        }
+    }
+
 } catch (error) {
     console.error('Erro ao inicializar aplicação:', error);
-    createWindow();
 }
 })();
 app.on('activate', function () {
