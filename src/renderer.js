@@ -889,7 +889,10 @@ function createDownloadItemHTML(file, isNewDownload = false) {
     <div class="download-item ${animationClass}" data-file-id="${file.id}">
       <div class="download-item-content">
         <div class="file-thumbnail">
-          ${file.thumbnail ? `<img src="${file.thumbnail}" alt="Thumbnail" />` : ''}
+          ${file.thumbnail ? `
+            <img class="thumbnail-glow" src="${file.thumbnail}" alt="" aria-hidden="true" />
+            <img class="thumbnail-main" src="${file.thumbnail}" alt="Thumbnail" />
+          ` : ''}
         </div>
         <div class="file-info-container">
           <div class="file-title">${file.title}</div>
@@ -967,7 +970,10 @@ function addFileActionListeners() {
   deleteIcons.forEach(icon => {
     icon.addEventListener('click', (e) => {
       const fileId = e.target.closest('.download-item').dataset.fileId;
-      deleteFile(fileId);
+      const file = downloadedFilesList.find(f => f.id == fileId);
+      if (file) {
+        deleteFile(fileId, file.fileName);
+      }
     });
   });
 }
@@ -977,11 +983,56 @@ function loadDownloadedFiles() {
   window.electronAPI.getDownloadedFiles();
 }
 
-function deleteFile(fileId) {
-  if (confirm('Are you sure you want to delete this file?')) {
-    window.electronAPI.deleteDownloadedFile(fileId);
+// ===== DELETE POPUP SYSTEM =====
+const deletePopup = document.getElementById('deletePopup');
+const deletePopupFilename = document.getElementById('deletePopupFilename');
+const deletePopupConfirm = document.getElementById('deletePopupConfirm');
+const deletePopupCancel = document.getElementById('deletePopupCancel');
+let pendingDeleteFileId = null;
+
+function showDeletePopup(fileId, fileName) {
+  pendingDeleteFileId = fileId;
+  if (deletePopupFilename) {
+    deletePopupFilename.textContent = fileName;
   }
+  deletePopup?.classList.add('active');
 }
+
+function hideDeletePopup() {
+  deletePopup?.classList.remove('active');
+  pendingDeleteFileId = null;
+}
+
+// Handle delete confirmation
+deletePopupConfirm?.addEventListener('click', () => {
+  if (pendingDeleteFileId) {
+    window.electronAPI.deleteDownloadedFile(pendingDeleteFileId);
+    hideDeletePopup();
+    showToast('File deleted successfully', 'success', 3000);
+  }
+});
+
+// Handle cancel
+deletePopupCancel?.addEventListener('click', () => {
+  hideDeletePopup();
+});
+
+// Close popup when clicking overlay
+deletePopup?.querySelector('.delete-popup-overlay')?.addEventListener('click', () => {
+  hideDeletePopup();
+});
+
+// Escape key to close
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && deletePopup?.classList.contains('active')) {
+    hideDeletePopup();
+  }
+});
+
+function deleteFile(fileId, fileName) {
+  showDeletePopup(fileId, fileName);
+}
+
 
 // Load downloaded files on page load
 document.addEventListener('DOMContentLoaded', () => {

@@ -65,7 +65,7 @@ class VideoDownloader {
 
         if (settings.embedSubs) args.push('--embed-subs');
         if (settings.writeInfoJson) args.push('--write-info-json');
-        if (settings.writeThumbnail) args.push('--write-thumbnail');
+        args.push('--write-thumbnail');
         if (settings.writeDescription) args.push('--write-description');
         if (settings.userAgent) args.push('--user-agent', settings.userAgent);
         if (settings.referer) args.push('--referer', settings.referer);

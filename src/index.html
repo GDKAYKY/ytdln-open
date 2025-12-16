@@ -252,6 +252,38 @@
                 </div>
             </div>
 
+            <!-- Delete Confirmation Popup -->
+            <div id="deletePopup" class="delete-popup">
+                <div class="delete-popup-overlay"></div>
+                <div class="delete-popup-content">
+                    <div class="delete-popup-header">
+                        <div class="delete-popup-icon-wrapper">
+                            <div class="delete-popup-icon-bg"></div>
+                            <svg class="delete-popup-icon" viewBox="0 0 24 24" fill="none">
+                                <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="delete-popup-title" id="deletePopupTitle" data-value="Delete File">Delete File</div>
+                        <div class="delete-popup-subtitle">This action cannot be undone</div>
+                    </div>
+                    <div class="delete-popup-body">
+                        <div class="delete-popup-filename-label">File to be deleted:</div>
+                        <div class="delete-popup-filename" id="deletePopupFilename">filename.mp4</div>
+                    </div>
+                    <div class="delete-popup-footer">
+                        <button class="delete-popup-btn delete-popup-btn-cancel" id="deletePopupCancel">
+                            <span>Cancel</span>
+                        </button>
+                        <button class="delete-popup-btn delete-popup-btn-delete" id="deletePopupConfirm">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M19 7L18.1327 19.1425C18.0579 20.1891 17.187 21 16.1378 21H7.86224C6.81296 21 5.94208 20.1891 5.86732 19.1425L5 7M10 11V17M14 11V17M15 7V4C15 3.44772 14.5523 3 14 3H10C9.44772 3 9 3.44772 9 4V7M4 7H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span>Delete</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Settings Modal -->
             <div id="settingsModal" class="modal">
                 <div class="modal-content">

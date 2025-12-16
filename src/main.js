@@ -110,7 +110,7 @@ async function scanDownloadsDir() {
                 if (!isTracked) {
                     try {
                         const stats = await fsPromises.stat(filePath);
-                        const thumbnailPath = findThumbnailForFile(filePath);
+                        const thumbnailPath = await findThumbnailForFile(filePath);
                         
                         downloadedFiles.unshift({
                             id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -494,7 +494,7 @@ function mergeThumbnailIntoVideo(videoFilePath) {
     });
 }
 
-async function trackDownloadedFile(videoUrl, specificPath = null) {
+async function trackDownloadedFile(videoUrl, specificPath = null, settings = {}) {
     try {
         const downloadsPath = app.getPath('downloads');
         const files = await fsPromises.readdir(downloadsPath);
@@ -529,11 +529,42 @@ async function trackDownloadedFile(videoUrl, specificPath = null) {
         }
         
         if (filePath) {
-            // Merge thumbnail if available
-            await mergeThumbnailIntoVideo(filePath);
+            let thumbnailPath = '';
             
-            // Extract/Get thumbnail path (embedded or frame)
-            const thumbnailPath = extractThumbnail(filePath);
+            // 1. Encontrar thumbnail baixada
+            const originalThumbPath = await findThumbnailForFile(filePath);
+
+            if (originalThumbPath && fs.existsSync(originalThumbPath)) {
+                try {
+                    // 2. Definir caminho na biblioteca (cache)
+                    // Usa o mesmo hash do video para consistencia, mas mantendo a extensao original da thumb
+                    const thumbExt = path.extname(originalThumbPath);
+                    const cachePathBase = getCachedThumbnailPath(filePath); // Retorna com .jpg
+                    const libraryThumbPath = cachePathBase.substring(0, cachePathBase.lastIndexOf('.')) + thumbExt;
+                    
+                    // 3. Copiar para a biblioteca
+                    await fsPromises.copyFile(originalThumbPath, libraryThumbPath);
+                    thumbnailPath = libraryThumbPath;
+
+                    // 4. Apagar original se a config "writeThumbnail" estiver desligada
+                    // Se estiver ligada, o usuário quer manter o arquivo.
+                    if (!settings.writeThumbnail) {
+                        try {
+                            await fsPromises.unlink(originalThumbPath);
+                        } catch (e) {
+                             console.error('Erro ao deletar thumbnail original:', e);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Erro ao processar thumbnail da biblioteca:', e);
+                }
+            }
+
+            // Fallback: se algo deu errado ou não baixou (embora tenhamos forçado a flag), tenta extrair
+            if (!thumbnailPath) {
+                 // Tentar extrair se não achou arquivo
+                 thumbnailPath = extractThumbnail(filePath);
+            }
             
             const stats = await fsPromises.stat(filePath);
             const fileName = path.basename(filePath);
@@ -609,7 +640,7 @@ createIpcHandler('download-video-with-settings', async (event, videoUrl, setting
         });
         
         console.log('Download completed successfully.');
-        await trackDownloadedFile(videoUrl, detectedPath);
+        await trackDownloadedFile(videoUrl, detectedPath, settings);
         event.sender.send('download-success');
     } catch (err) {
         console.error('Download failed:', err);
