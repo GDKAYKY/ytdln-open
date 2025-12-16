@@ -38,7 +38,8 @@ const defaultSettings = {
     noCheckCertificate: true,
     ignoreErrors: true,
     writeThumbnail: true,
-    writeDescription: false
+    writeDescription: false,
+    showConsole: true
 };
 
 // Carregar configurações salvas
@@ -52,6 +53,7 @@ function loadSettings() {
         currentSettings = { ...defaultSettings, ...JSON.parse(saved) };
     }
     applySettingsToUI();
+    toggleConsoleVisibility(currentSettings.showConsole);
 }
 
 function saveSettings() {
@@ -79,6 +81,7 @@ function applySettingsToUI() {
     document.getElementById('ignoreErrors').checked = currentSettings.ignoreErrors;
     document.getElementById('writeThumbnail').checked = currentSettings.writeThumbnail;
     document.getElementById('writeDescription').checked = currentSettings.writeDescription;
+    document.getElementById('showConsole').checked = currentSettings.showConsole;
 }
 
 function getSettingsFromUI() {
@@ -101,7 +104,8 @@ function getSettingsFromUI() {
         noCheckCertificate: document.getElementById('noCheckCertificate').checked,
         ignoreErrors: document.getElementById('ignoreErrors').checked,
         writeThumbnail: document.getElementById('writeThumbnail').checked,
-        writeDescription: document.getElementById('writeDescription').checked
+        writeDescription: document.getElementById('writeDescription').checked,
+        showConsole: document.getElementById('showConsole').checked
     };
 }
 
@@ -110,19 +114,48 @@ function resetToDefaults() {
     applySettingsToUI();
 }
 
+let typingInterval;
+
+function typeWriter(text, element, speed = 10) {
+    if (typingInterval) clearInterval(typingInterval);
+    element.innerText = '';
+    
+    let i = 0;
+    typingInterval = setInterval(() => {
+        if (i < text.length) {
+            element.innerText += text.charAt(i);
+            i++;
+            // Auto-scroll to bottom while typing
+            element.parentElement.scrollTop = element.parentElement.scrollHeight;
+        } else {
+            clearInterval(typingInterval);
+            typingInterval = null;
+        }
+    }, speed);
+}
+
 // Função para atualizar status com controle de debug
 function updateStatus(message, isAppend = false) {
   if (debugModeCheckbox.checked) {
     if (isAppend) {
       statusDiv.innerText += message;
+      statusDiv.parentElement.scrollTop = statusDiv.parentElement.scrollHeight;
     } else {
       statusDiv.innerText = message;
     }
   } else {
     // No modo normal, mostrar apenas a última linha
     const lines = message.trim().split('\n');
-    const lastLine = lines[lines.length - 1];
-    statusDiv.innerText = lastLine;
+    const lastLine = lines[lines.length - 1] || '';
+    
+    // Check if it looks like a progress update (has percentage)
+    // If it is progress, show instantly to avoid jitter. If not, type it out.
+    if (lastLine.match(/\d+\.?\d*%/) || lastLine.includes('[download]')) {
+         if (typingInterval) clearInterval(typingInterval);
+         statusDiv.innerText = lastLine;
+    } else {
+         typeWriter(lastLine, statusDiv, 20);
+    }
   }
 }
 
@@ -155,6 +188,22 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Console toggle functionality
+// Console toggle functionality
+function toggleConsoleVisibility(show) {
+  const consoleSection = document.getElementById('consoleSection');
+  const mainContent = document.querySelector('.main-content');
+  
+  if (show) {
+    consoleSection.classList.remove('collapsed');
+    mainContent.classList.remove('console-collapsed');
+  } else {
+    consoleSection.classList.add('collapsed');
+    mainContent.classList.add('console-collapsed');
+  }
+}
+
+
 // Configurar eventos do modal
 function setupModalEvents() {
   // Abrir modal
@@ -185,6 +234,8 @@ function setupModalEvents() {
     saveSettings();
     settingsModal.style.display = 'none';
     updateStatus('Configurações salvas com sucesso!');
+    toggleConsoleVisibility(currentSettings.showConsole);
+    showToast('Settings saved successfully!', 'success', 3000);
   });
   
   // Resetar para padrão
@@ -192,6 +243,7 @@ function setupModalEvents() {
     if (confirm('Tem certeza que deseja resetar todas as configurações para o padrão?')) {
       resetToDefaults();
       updateStatus('Configurações resetadas para o padrão!');
+      showToast('Settings reset to default!', 'info', 3000);
     }
   });
 }
@@ -268,8 +320,129 @@ window.electronAPI.onDownloadProgress((data) => {
 
   const progressMatch = data.match(/(\d+\.\d+)%/);
   if (progressMatch && progressMatch[1]) {
-    progressText.textContent = `${Math.floor(parseFloat(progressMatch[1]))}%`;
+    const percent = parseFloat(progressMatch[1]);
+    const progressRing = document.getElementById('progressRing');
+    
+    // Update text
+    progressText.textContent = `${Math.floor(percent)}%`;
+    
+    // Update ring
+    if (progressRing) {
+      const radius = progressRing.r.baseVal.value;
+      const circumference = radius * 2 * Math.PI;
+      const offset = circumference - (percent / 100) * circumference;
+      progressRing.style.strokeDashoffset = offset;
+    }
   }
+});
+
+// ===== TOAST NOTIFICATION SYSTEM =====
+const toastQueue = [];
+let isToastVisible = false;
+let toastTimeout = null;
+
+/**
+ * Show a toast notification
+ * @param {string} message - The message to display
+ * @param {string} type - Type of toast: 'success', 'error', 'info', 'warning'
+ * @param {number} duration - Duration in milliseconds (default: 4000)
+ */
+function showToast(message, type = 'success', duration = 4000) {
+  toastQueue.push({ message, type, duration });
+  if (!isToastVisible) {
+    processToastQueue();
+  }
+}
+
+function processToastQueue() {
+  if (toastQueue.length === 0) {
+    isToastVisible = false;
+    return;
+  }
+
+  const { message, type, duration } = toastQueue.shift();
+  isToastVisible = true;
+
+  // Update toast content
+  const toastText = document.querySelector('.toast-text');
+  const toastCheckmark = document.querySelector('.toast-checkmark svg path');
+  const progressFill = document.querySelector('.progress-fill');
+  
+  toastText.textContent = message;
+
+  // Configure colors based on type
+  const colors = {
+    success: { bg: 'var(--color-dark-green-1)', border: 'var(--color-bright-green)', icon: '#28A745' },
+    error: { bg: '#2d1a1a', border: '#ff6b6b', icon: '#ff6b6b' },
+    info: { bg: '#1a2d3d', border: '#4a9eff', icon: '#4a9eff' },
+    warning: { bg: '#3d2d1a', border: '#ffa500', icon: '#ffa500' }
+  };
+
+  const color = colors[type] || colors.success;
+  
+  toastContainer.style.background = color.bg;
+  toastContainer.style.borderColor = color.border;
+  toastText.style.color = color.border;
+  
+  if (toastCheckmark) {
+    toastCheckmark.setAttribute('stroke', color.icon);
+  }
+
+  // Update close button color
+  const closeButton = document.querySelector('.toast-close svg path');
+  if (closeButton) {
+    closeButton.setAttribute('stroke', color.icon);
+  }
+
+  // Show toast with animation
+  toastContainer.style.display = 'block';
+  toastContainer.style.opacity = '0';
+  toastContainer.style.transform = 'translateY(20px)';
+  
+  // Trigger animation
+  requestAnimationFrame(() => {
+    toastContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    toastContainer.style.opacity = '1';
+    toastContainer.style.transform = 'translateY(0)';
+  });
+
+  // Reset and start progress animation
+  if (progressFill) {
+    progressFill.style.animation = 'none';
+    // Force reflow to restart animation
+    const reflow = progressFill.offsetHeight;
+    progressFill.style.animation = `progressFill ${duration}ms linear`;
+  }
+
+  // Clear existing timeout
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+  }
+
+  // Auto-hide after duration
+  toastTimeout = setTimeout(() => {
+    hideToast();
+  }, duration);
+}
+
+function hideToast() {
+  toastContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+  toastContainer.style.opacity = '0';
+  toastContainer.style.transform = 'translateY(20px)';
+  
+  setTimeout(() => {
+    toastContainer.style.display = 'none';
+    isToastVisible = false;
+    processToastQueue(); // Process next toast in queue
+  }, 300);
+}
+
+// Add click handler for close button
+document.querySelector('.toast-close')?.addEventListener('click', () => {
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+  }
+  hideToast();
 });
 
 // Listen for download success message
@@ -282,10 +455,8 @@ window.electronAPI.onDownloadSuccess(() => {
   downloadBtn.classList.remove('downloading');
   downloadBtn.textContent = 'Download';
 
-  toastContainer.style.opacity = 1;
-  setTimeout(() => {
-    toastContainer.style.opacity = 0;
-  }, 4000);
+  // Show success toast
+  showToast('Download completed successfully!', 'success', 4000);
 });
 
 // Listen for download error message
@@ -294,6 +465,9 @@ window.electronAPI.onDownloadError((errorMessage) => {
   // Restore button state on error
   downloadBtn.classList.remove('downloading');
   downloadBtn.textContent = 'Download';
+  
+  // Show error toast
+  showToast('Download failed! Check console for details.', 'error', 5000);
 });
 
 // Content Loader Functions
@@ -365,6 +539,94 @@ window.testCascadeAnimation = function() {
 
 // Downloaded Files Management
 let downloadedFilesList = [];
+let filteredFilesList = [];
+let currentSearchTerm = '';
+let currentSortOption = 'date-desc';
+
+// Update downloads count
+function updateDownloadsCount(count) {
+  const downloadsCount = document.getElementById('downloadsCount');
+  if (downloadsCount) {
+    downloadsCount.textContent = count === 1 ? '1 video' : `${count} videos`;
+  }
+}
+
+// Search functionality
+function filterFiles(searchTerm) {
+  currentSearchTerm = searchTerm.toLowerCase();
+  filteredFilesList = downloadedFilesList.filter(file => {
+    const titleMatch = file.title.toLowerCase().includes(currentSearchTerm);
+    const fileNameMatch = file.fileName.toLowerCase().includes(currentSearchTerm);
+    return titleMatch || fileNameMatch;
+  });
+  sortAndDisplayFiles();
+}
+
+// Sort functionality
+function sortFiles(files, sortOption) {
+  const sorted = [...files];
+  
+  switch (sortOption) {
+    case 'date-desc':
+      sorted.sort((a, b) => new Date(b.downloadDate) - new Date(a.downloadDate));
+      break;
+    case 'date-asc':
+      sorted.sort((a, b) => new Date(a.downloadDate) - new Date(b.downloadDate));
+      break;
+    case 'name-asc':
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+      break;
+    case 'name-desc':
+      sorted.sort((a, b) => b.title.localeCompare(a.title));
+      break;
+    case 'size-desc':
+      sorted.sort((a, b) => b.fileSize - a.fileSize);
+      break;
+    case 'size-asc':
+      sorted.sort((a, b) => a.fileSize - b.fileSize);
+      break;
+  }
+  
+  return sorted;
+}
+
+function sortAndDisplayFiles() {
+  const sorted = sortFiles(filteredFilesList, currentSortOption);
+  displayDownloadedFiles(sorted);
+  updateDownloadsCount(sorted.length);
+}
+
+// Setup library controls
+function setupLibraryControls() {
+  const searchInput = document.getElementById('searchInput');
+  const sortSelect = document.getElementById('sortSelect');
+  const refreshBtn = document.getElementById('refreshLibraryBtn');
+  
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      filterFiles(e.target.value);
+    });
+  }
+  
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      currentSortOption = e.target.value;
+      sortAndDisplayFiles();
+    });
+  }
+  
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      loadDownloadedFiles();
+      showToast('Library refreshed!', 'info', 2000);
+    });
+  }
+}
+
+// Initialize library controls on page load
+document.addEventListener('DOMContentLoaded', () => {
+  setupLibraryControls();
+});
 
 function formatFileSize(bytes) {
   if (bytes === 0) return '0 B';
@@ -452,6 +714,7 @@ function displayDownloadedFiles(files) {
   if (!files || files.length === 0) {
     if (noDownloadsMessage) noDownloadsMessage.style.display = 'flex';
     if (contentLoader) contentLoader.style.display = 'none';
+    updateDownloadsCount(0);
     return;
   }
   
@@ -471,6 +734,8 @@ function displayDownloadedFiles(files) {
       addFileActionListeners();
     }, index * 100); // 100ms delay between each item
   });
+  
+  updateDownloadsCount(files.length);
 }
 
 function addFileActionListeners() {
@@ -514,17 +779,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // Listen for downloaded files list
 window.electronAPI.onDownloadedFilesList((files) => {
   downloadedFilesList = files;
+  filteredFilesList = files;
   hideContentLoader();
-  displayDownloadedFiles(files);
+  sortAndDisplayFiles();
 });
 
 // Listen for file deleted
 window.electronAPI.onFileDeleted((fileId) => {
   downloadedFilesList = downloadedFilesList.filter(f => f.id !== fileId);
+  filteredFilesList = filteredFilesList.filter(f => f.id !== fileId);
   const fileElement = document.querySelector(`[data-file-id="${fileId}"]`);
   if (fileElement) {
     fileElement.remove();
   }
+  
+  updateDownloadsCount(filteredFilesList.length);
   
   // Show no downloads message if no files left
   if (downloadedFilesList.length === 0) {
