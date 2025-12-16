@@ -1,8 +1,12 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('node:path');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, execFileSync, execFile } = require('node:child_process');
 const BinaryDownloader = require('./bin-downloader');
+// INICIO
+const VideoDownloader = require('./videodownloader');
+// FIM
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 
 const ALLOWED_IPC_CHANNELS = new Set([
     'download-video',
@@ -51,27 +55,6 @@ function validateIpcChannel(channel) {
 // ============================================================================
 // BINARY VALIDATION AND SECURITY
 // ============================================================================
-
-/**
- * Valida a integridade do binário usando hash SHA256
- * @param {string} binaryPath - Caminho para o binário
- * @param {string} expectedHash - Hash SHA256 esperado
- * @returns {boolean}
- */
-
-
-/**
- * Garante que o binário tem permissões de execução (Linux/Mac)
- * @param {string} binaryPath - Caminho para o binário
- */
-
-/**
- * Executa um comando de forma segura usando execFileSync
- * @param {string} command - Comando para executar
- * @param {Array} args - Argumentos do comando
- * @param {Object} options - Opções do execFileSync
- * @returns {string|null}
- */
 function safeExecFile(command, args = [], options = {}) {
     try {
         const result = execFileSync(command, args, {
@@ -87,11 +70,6 @@ function safeExecFile(command, args = [], options = {}) {
     }
 }
 
-/**
- * Encontra um binário no PATH do sistema
- * @param {string} binaryName - Nome do binário
- * @returns {string|null}
- */
 function findSystemBinary(binaryName) {
     if (process.platform === 'win32') {
         const result = safeExecFile('where', [binaryName]);
@@ -114,6 +92,8 @@ function scanDownloadsDir() {
         files.forEach(file => {
             const ext = path.extname(file).toLowerCase();
             if (videoExtensions.has(ext)) {
+                // Ignore temp files and partial downloads
+                if (file.includes('.tmp') || file.endsWith('.part')) return;
                 const filePath = path.join(downloadsPath, file);
                 
                 const isTracked = downloadedFiles.some(f => f.filePath === filePath);
@@ -155,22 +135,26 @@ function scanDownloadsDir() {
 // ============================================================================
 
 let binaryDownloader = null;
+let videoDownloader = null;
 let binaryPaths = null;
 
+// INICIO
 async function initializeBinaries() {
     try {
-        binaryDownloader = new BinaryDownloader();
-        binaryPaths = await binaryDownloader.checkAndDownloadBinaries();
+        videoDownloader = new VideoDownloader();
+        await videoDownloader.init();
+        binaryPaths = videoDownloader.binaries;
 
         console.log('✓ Binários inicializados e validados:', binaryPaths);
         return binaryPaths;
     } catch (error) {
+// FIM
         console.error('Erro ao inicializar binários:', error);
 
         // Tentar usar binários do sistema como fallback
         const fallbackPaths = {
-            ytdlp: getYtdlpPath(),
-            ffmpeg: getFfmpegPath()
+            ytdlp: findSystemBinary('yt-dlp'),
+            ffmpeg: findSystemBinary('ffmpeg')
         };
 
         if (fallbackPaths.ytdlp && fallbackPaths.ffmpeg) {
@@ -279,7 +263,17 @@ function getDownloadedFiles() {
         if (file.filePath && fs.existsSync(file.filePath)) {
             // Se não tem thumbnail ou ela não existe mais, tenta encontrar
             if (!file.thumbnail || !fs.existsSync(file.thumbnail)) {
-                const thumb = findThumbnailForFile(file.filePath);
+                // Tentar encontrar externa
+                let thumb = findThumbnailForFile(file.filePath);
+                
+                // Se não achar externa, tentar cache/extração (mas sem bloquear muito)
+                if (!thumb) {
+                    const cachePath = getCachedThumbnailPath(file.filePath);
+                    if (fs.existsSync(cachePath)) {
+                        thumb = cachePath;
+                    }
+                }
+
                 if (thumb) {
                     file.thumbnail = thumb;
                     changed = true;
@@ -301,7 +295,124 @@ function getDownloadedFiles() {
     return downloadedFiles;
 }
 
-function trackDownloadedFile(videoUrl) {
+const thumbnailsCachePath = path.join(app.getPath('userData'), 'thumbnails');
+if (!fs.existsSync(thumbnailsCachePath)) {
+    fs.mkdirSync(thumbnailsCachePath, { recursive: true });
+}
+
+function getCachedThumbnailPath(videoPath) {
+    const hash = crypto.createHash('md5').update(videoPath).digest('hex');
+    return path.join(thumbnailsCachePath, `${hash}.jpg`);
+}
+
+function extractThumbnail(videoPath) {
+    if (!videoPath || !fs.existsSync(videoPath)) return '';
+
+    const cachePath = getCachedThumbnailPath(videoPath);
+    if (fs.existsSync(cachePath)) return cachePath;
+
+    try {
+        const ffmpegPath = binaryPaths?.ffmpeg || 'ffmpeg';
+
+        // Tenta extrair a imagem embutida (stream 0:v:1 assumindo layout padrão pós-merge)
+        try {
+            execFileSync(ffmpegPath, [
+                '-y',
+                '-i', videoPath,
+                '-map', '0:v:1',
+                '-c', 'copy',
+                '-f', 'image2',
+                cachePath
+            ], { stdio: 'ignore' });
+
+            if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 0) {
+                return cachePath;
+            }
+        } catch (e) {
+            // Se falhar (ex: sem stream v:1), tenta fallback
+        }
+
+        // Fallback: Extrair primeiro frame
+        execFileSync(ffmpegPath, [
+            '-y',
+            '-i', videoPath,
+            '-ss', '00:00:01',
+            '-frames:v', '1',
+            '-f', 'image2',
+            cachePath
+        ], { stdio: 'ignore' });
+
+        if (fs.existsSync(cachePath)) return cachePath;
+
+    } catch (err) {
+        console.error('Falha na extração de thumbnail:', err);
+    }
+    return '';
+}
+
+async function mergeThumbnailIntoVideo(videoFilePath) {
+    if (!videoFilePath) return false;
+
+    const dir = path.dirname(videoFilePath);
+    const ext = path.extname(videoFilePath);
+    const base = path.basename(videoFilePath, ext);
+
+    const thumbExts = ['.webp', '.jpg', '.jpeg', '.png'];
+    let thumbPath = null;
+
+    for (const tExt of thumbExts) {
+        const candidate = path.join(dir, base + tExt);
+        if (fs.existsSync(candidate)) {
+            thumbPath = candidate;
+            break;
+        }
+    }
+
+    // sem thumbnail -> não faz nada
+    if (!thumbPath) return false;
+
+    const tmpOutput = path.join(dir, `${base}.tmp${ext}`);
+    const ffmpegPath = binaryPaths?.ffmpeg || 'ffmpeg';
+
+    return new Promise((resolve) => {
+        execFile(
+            ffmpegPath,
+            [
+                '-y',
+                '-i', videoFilePath,
+                '-i', thumbPath,
+                '-map', '0',
+                '-map', '1',
+                '-c', 'copy',
+                '-disposition:v:1', 'attached_pic',
+                tmpOutput
+            ],
+            (err) => {
+                if (err || !fs.existsSync(tmpOutput)) {
+                    // falhou -> não toca em nada
+                    if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
+                    return resolve(false);
+                }
+
+                try {
+                    // substitui o original
+                    fs.renameSync(tmpOutput, videoFilePath);
+
+                    // cleanup da thumbnail
+                    fs.unlinkSync(thumbPath);
+
+                    resolve(true);
+                } catch {
+                    // rollback simples
+                    if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
+                    resolve(false);
+                }
+            }
+        );
+    });
+}
+
+async function trackDownloadedFile(videoUrl, specificPath = null) {
     try {
         const downloadsPath = app.getPath('downloads');
         const files = fs.readdirSync(downloadsPath);
@@ -310,26 +421,37 @@ function trackDownloadedFile(videoUrl) {
             return ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv'].includes(ext);
         });
 
-        if (videoFiles.length === 0) return;
+        if (videoFiles.length === 0 && !specificPath) return;
 
-        const latestFile = videoFiles.reduce((latest, current) => {
-            const latestPath = path.join(downloadsPath, latest);
-            const currentPath = path.join(downloadsPath, current);
-            const latestTime = fs.statSync(latestPath).mtime;
-            const currentTime = fs.statSync(currentPath).mtime;
-            return currentTime > latestTime ? current : latest;
-        }, videoFiles[0]); // Use first element as initial value
+        let filePath = specificPath;
 
-        const filePath = path.join(downloadsPath, latestFile);
-        const thumbnailPath = findThumbnailForFile(filePath);
+        if (!filePath || !fs.existsSync(filePath)) {
+             const latestFile = videoFiles.reduce((latest, current) => {
+                const latestPath = path.join(downloadsPath, latest);
+                const currentPath = path.join(downloadsPath, current);
+                const latestTime = fs.statSync(latestPath).mtime;
+                const currentTime = fs.statSync(currentPath).mtime;
+                return currentTime > latestTime ? current : latest;
+            }, videoFiles[0]); // Use first element as initial value
+            
+            filePath = path.join(downloadsPath, latestFile);
+        }
+        // Merge thumbnail if available
+        await mergeThumbnailIntoVideo(filePath);
+        
+        // Extract/Get thumbnail path (embedded or frame)
+        const thumbnailPath = extractThumbnail(filePath);
+        
         const stats = fs.statSync(filePath);
 
+        const fileName = path.basename(filePath);
+
         addDownloadedFile({
-            title: path.parse(latestFile).name,
-            fileName: latestFile,
+            title: path.parse(fileName).name,
+            fileName: fileName,
             filePath: filePath,
             fileSize: stats.size,
-            format: path.extname(latestFile).substring(1).toUpperCase(),
+            format: path.extname(fileName).substring(1).toUpperCase(),
             url: videoUrl,
             thumbnail: thumbnailPath
         });
@@ -342,151 +464,7 @@ function trackDownloadedFile(videoUrl) {
 // YT-DLP UTILITIES
 // ============================================================================
 
-function buildYtdlpArgs(settings, videoUrl, ffmpegPath) {
-    const args = ['--progress', '--newline'];
 
-    args.push(
-        '-o', path.join(app.getPath('downloads'), '%(title)s.%(ext)s'),
-        '--ffmpeg-location', ffmpegPath,
-        '--merge-output-format', settings.outputFormat
-    );
-
-    if (settings.quality !== 'best') {
-        if (settings.quality === 'worst') {
-            args.push('-f', 'worst');
-        } else {
-            args.push('-f', `best[height<=${settings.quality.replace('p', '')}]`);
-        }
-    }
-
-    args.push('--concurrent-fragments', settings.concurrentFragments.toString());
-
-    if (settings.embedSubs) args.push('--embed-subs');
-    if (settings.writeInfoJson) args.push('--write-info-json');
-    if (settings.writeThumbnail) args.push('--write-thumbnail');
-    if (settings.writeDescription) args.push('--write-description');
-    if (settings.userAgent) args.push('--user-agent', settings.userAgent);
-    if (settings.referer) args.push('--referer', settings.referer);
-
-    args.push(
-        '--socket-timeout', settings.socketTimeout.toString(),
-        '--retries', settings.retries.toString(),
-        '--fragment-retries', settings.fragmentRetries.toString(),
-        '--extractor-retries', settings.extractorRetries.toString()
-    );
-
-    if (settings.noCheckCertificate) args.push('--no-check-certificate');
-    if (settings.ignoreErrors) args.push('--ignore-errors');
-
-    args.push(videoUrl);
-    return args;
-}
-
-function getVideoInfo(ytdlpPath, videoUrl) {
-    return new Promise((resolve) => {
-        const infoArgs = ['--dump-json', videoUrl];
-        const ytdlpProcess = spawn(ytdlpPath, sanitizeArgs(infoArgs), {
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
-        let infoJson = '';
-
-        ytdlpProcess.stdout.on('data', (data) => {
-            infoJson += data.toString();
-        });
-
-        ytdlpProcess.stderr.on('data', (data) => {
-            console.error(`yt-dlp (info) stderr: ${data}`);
-        });
-
-        ytdlpProcess.on('close', (code) => {
-            if (code !== 0) {
-                resolve(null);
-                return;
-            }
-
-            try {
-                const info = JSON.parse(infoJson);
-                resolve({ acodec: info.acodec || '' });
-            } catch (e) {
-                console.error('Erro ao analisar JSON do vídeo:', e);
-                resolve(null);
-            }
-        });
-
-        ytdlpProcess.on('error', (err) => {
-            console.error('Erro ao executar yt-dlp:', err);
-            resolve(null);
-        });
-    });
-}
-
-function buildDownloadArgs(settings, videoUrl, ffmpegPath, sourceAcodec) {
-    const args = buildYtdlpArgs(settings, videoUrl, ffmpegPath);
-    const targetFormat = settings.audioFormat;
-
-    if (targetFormat === 'best') {
-        console.log('Formato de áudio de destino é "best". Remuxing.');
-        return args;
-    }
-
-    const codecMap = {
-        'mp3': { check: 'mp3', ffmpeg: 'libmp3lame' },
-        'aac': { check: 'mp4a', ffmpeg: 'aac' },
-        'opus': { check: 'opus', ffmpeg: 'libopus' }
-    };
-
-    const target = codecMap[targetFormat];
-
-    if (target && !sourceAcodec.startsWith(target.check)) {
-        console.log(`Codec de áudio detectado: ${sourceAcodec}. Re-encodando para ${targetFormat.toUpperCase()}.`);
-        args.push('--postprocessor-args', `ffmpeg:-c:v copy -c:a ${target.ffmpeg}`);
-    } else {
-        console.log(`Codec de áudio já é compatível (${sourceAcodec}). Remuxing.`);
-    }
-
-    return args;
-}
-
-function runYtdlpProcess(event, ytdlpPath, downloadArgs, videoUrl) {
-    const sanitizedArgs = sanitizeArgs(downloadArgs);
-    const ytdlpProcess = spawn(ytdlpPath, sanitizedArgs, {
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    const timeoutId = setTimeout(() => {
-        if (!ytdlpProcess.killed) {
-            ytdlpProcess.kill('SIGTERM');
-            event.sender.send('download-error', 'Download cancelado por timeout (30 minutos).');
-        }
-    }, 30 * 60 * 1000);
-
-    ytdlpProcess.stdout.on('data', (data) => {
-        event.sender.send('download-progress', data.toString());
-    });
-
-    ytdlpProcess.stderr.on('data', (data) => {
-        console.error(`yt-dlp stderr: ${data}`);
-        event.sender.send('download-error', data.toString());
-    });
-
-    ytdlpProcess.on('close', (code) => {
-        clearTimeout(timeoutId);
-        if (code === 0) {
-            console.log('Download completed successfully.');
-            trackDownloadedFile(videoUrl);
-            event.sender.send('download-success');
-        } else {
-            console.error(`yt-dlp process exited with code ${code}`);
-            event.sender.send('download-error', `Process exited with code ${code}`);
-        }
-    });
-
-    ytdlpProcess.on('error', (err) => {
-        clearTimeout(timeoutId);
-        console.error('Failed to start yt-dlp process.', err);
-        event.sender.send('download-error', `Failed to start process. Error: ${err.message}`);
-    });
-}
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -504,34 +482,7 @@ function validateVideoUrlOrNotify(event, videoUrl) {
     return true;
 }
 
-function ensureBinariesReadyOrNotify(event) {
-    if (!binaryPaths) {
-        event.sender.send('download-error', 'Binários não inicializados. Reinicie a aplicação.');
-        return null;
-    }
 
-    let ytdlpPath = binaryPaths.ytdlp;
-    let ffmpegPath = binaryPaths.ffmpeg;
-
-    // Verificar existência e tentar fallback se necessário
-    if (!fs.existsSync(ytdlpPath)) {
-        ytdlpPath = getYtdlpPath();
-        if (!ytdlpPath) {
-            event.sender.send('download-error', 'yt-dlp not found.');
-            return null;
-        }
-    }
-
-    if (!fs.existsSync(ffmpegPath)) {
-        ffmpegPath = getFfmpegPath();
-        if (!ffmpegPath) {
-            event.sender.send('download-error', 'ffmpeg not found.');
-            return null;
-        }
-    }
-
-    return { ytdlpPath, ffmpegPath };
-}
 
 // ============================================================================
 // IPC HANDLERS
@@ -554,22 +505,25 @@ function createIpcHandler(channel, handler) {
     });
 }
 
+// INICIO
 createIpcHandler('download-video-with-settings', async (event, videoUrl, settings) => {
     if (!validateVideoUrlOrNotify(event, videoUrl)) return;
 
-    const bin = ensureBinariesReadyOrNotify(event);
-    if (!bin) return;
-
-    const { ytdlpPath, ffmpegPath } = bin;
-
-    const videoInfo = await getVideoInfo(ytdlpPath, videoUrl);
-    if (!videoInfo) {
-        throw new Error('Failed to get video information.');
+    try {
+        const detectedPath = await videoDownloader.download(videoUrl, settings, {
+            onProgress: (msg) => event.sender.send('download-progress', msg),
+            onError: (msg) => event.sender.send('download-error', msg)
+        });
+        
+        console.log('Download completed successfully.');
+        await trackDownloadedFile(videoUrl, detectedPath);
+        event.sender.send('download-success');
+    } catch (err) {
+        console.error('Download failed:', err);
+        event.sender.send('download-error', err.message);
     }
-
-    const args = buildDownloadArgs(settings, videoUrl, ffmpegPath, videoInfo.acodec);
-    runYtdlpProcess(event, ytdlpPath, args, videoUrl);
 });
+// FIM
 
 ipcMain.on('download-video', async (event, videoUrl) => {
     const defaultSettings = {

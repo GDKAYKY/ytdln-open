@@ -439,8 +439,8 @@ function createDownloadItemHTML(file, isNewDownload = false) {
           <div class="file-timestamp">${timestamp}</div>
         </div>
       </div>
-      <div class="separator-line"></div>
     </div>
+    <div class="separator-line"></div>
   `;
 }
 
