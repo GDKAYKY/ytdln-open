@@ -28,12 +28,9 @@ function downloadFile(url, outPath) {
     const file = fs.createWriteStream(outPath);
 
     https.get(url, res => {
-      // redirect (302 etc)
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         file.close();
-        return downloadFile(res.headers.location, outPath)
-          .then(resolve)
-          .catch(reject);
+        return downloadFile(res.headers.location, outPath).then(resolve).catch(reject);
       }
 
       if (res.statusCode !== 200) {
@@ -42,20 +39,16 @@ function downloadFile(url, outPath) {
       }
 
       res.pipe(file);
-      
+
       file.on('finish', () => {
-        file.close(() => {
-          // ✅ Só resolve DEPOIS que o arquivo foi completamente fechado
-          resolve();
-        });
+        file.close(resolve);
       });
-      
+
       file.on('error', err => {
         file.close();
         if (fs.existsSync(outPath)) fs.rmSync(outPath);
         reject(err);
       });
-      
     }).on('error', err => {
       file.close();
       if (fs.existsSync(outPath)) fs.rmSync(outPath);
@@ -87,23 +80,30 @@ function normalizeBinDirectory() {
     const full = path.join(BIN_DIR, entry);
 
     if (fs.statSync(full).isDirectory()) {
-      const inner = fs.readdirSync(full);
-      for (const f of inner) {
-        const src = path.join(full, f);
-        const dst = path.join(BIN_DIR, f);
-        if (!fs.existsSync(dst)) {
-          fs.renameSync(src, dst);
+      const search = dir => {
+        for (const item of fs.readdirSync(dir)) {
+          const itemPath = path.join(dir, item);
+          const stat = fs.statSync(itemPath);
+
+          if (stat.isDirectory()) {
+            search(itemPath);
+          } else if (ALLOWED_BINARIES.has(item)) {
+            const dst = path.join(BIN_DIR, item);
+            if (!fs.existsSync(dst)) {
+              fs.renameSync(itemPath, dst);
+            }
+          }
         }
-      }
+      };
+
+      search(full);
       fs.rmSync(full, { recursive: true, force: true });
     }
   }
 }
 
 function cleanup() {
-  const entries = fs.readdirSync(BIN_DIR);
-
-  for (const entry of entries) {
+  for (const entry of fs.readdirSync(BIN_DIR)) {
     const full = path.join(BIN_DIR, entry);
 
     if (fs.statSync(full).isDirectory()) {
@@ -121,29 +121,49 @@ class BinaryDownloader {
   async ensureAll() {
     ensureDir(BIN_DIR);
 
-    for (const [name, url] of Object.entries(URLS)) {
-      const outPath = path.join(BIN_DIR, name);
-      if (!fs.existsSync(outPath)) {
-        await downloadFile(url, outPath);
-      }
-    }
-
-    for (const file of fs.readdirSync(BIN_DIR)) {
-      if (file.endsWith('.zip')) {
-        extractZipWindows(path.join(BIN_DIR, file), BIN_DIR);
-      }
-      normalizeBinDirectory();
-    }
-
-    cleanup();
-
-    return {
+    const binaryPaths = {
       ytdlp: path.join(BIN_DIR, 'yt-dlp.exe'),
       ffmpeg: path.join(BIN_DIR, 'ffmpeg.exe'),
       ffprobe: path.join(BIN_DIR, 'ffprobe.exe'),
       ffplay: path.join(BIN_DIR, 'ffplay.exe')
     };
+
+    const missingYtdlp = !fs.existsSync(binaryPaths.ytdlp);
+    const missingFFmpeg =
+      !fs.existsSync(binaryPaths.ffmpeg) ||
+      !fs.existsSync(binaryPaths.ffprobe) ||
+      !fs.existsSync(binaryPaths.ffplay);
+
+    if (!missingYtdlp && !missingFFmpeg) {
+      return binaryPaths;
+    }
+
+    if (missingYtdlp) {
+      await downloadFile(URLS['yt-dlp.exe'], binaryPaths.ytdlp);
+    }
+
+    if (missingFFmpeg) {
+      const zipPath = path.join(BIN_DIR, 'ffmpeg.zip');
+      await downloadFile(URLS['ffmpeg.zip'], zipPath);
+
+      if (!fs.existsSync(zipPath) || fs.statSync(zipPath).size === 0) {
+        throw new Error('FFmpeg download failed');
+      }
+
+      extractZipWindows(zipPath, BIN_DIR);
+      normalizeBinDirectory();
+
+      if (
+        !fs.existsSync(binaryPaths.ffmpeg) ||
+        !fs.existsSync(binaryPaths.ffprobe) ||
+        !fs.existsSync(binaryPaths.ffplay)
+      ) {
+        throw new Error('FFmpeg extraction incomplete');
+      }
+    }
+
+    cleanup();
+    return binaryPaths;
   }
 }
-
 module.exports = BinaryDownloader;
