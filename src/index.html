@@ -59,6 +59,7 @@
                         </svg>
                         Open Folder
                     </button>
+
                     <input type="checkbox" id="debugMode" style="display: none;">
                     <button id="settingsBtn" class="header-button">
                         <svg viewBox="0 0 24 24" fill="none">
@@ -127,14 +128,40 @@
                                 <input type="text" id="searchInput" class="search-input" placeholder="Search videos...">
                             </div>
                             <div class="sort-controls">
-                                <select id="sortSelect" class="sort-select">
-                                    <option value="date-desc">Newest first</option>
-                                    <option value="date-asc">Oldest first</option>
-                                    <option value="name-asc">Name (A-Z)</option>
-                                    <option value="name-desc">Name (Z-A)</option>
-                                    <option value="size-desc">Largest first</option>
-                                    <option value="size-asc">Smallest first</option>
-                                </select>
+                                <div class="menu sort-menu">
+                                    <div class="item">
+                                        <div class="link">
+                                            <span id="currentSortLabel">Sort by</span>
+                                            <svg viewBox="0 0 360 360" xml:space="preserve">
+                                                <g id="SVGRepo_iconCarrier">
+                                                    <path id="XMLID_225_"
+                                                        d="M325.607,79.393c-5.857-5.857-15.355-5.858-21.213,0.001l-139.39,139.393L25.607,79.393 c-5.857-5.857-15.355-5.858-21.213,0.001c-5.858,5.858-5.858,15.355,0,21.213l150.004,150c2.813,2.813,6.628,4.393,10.606,4.393 s7.794-1.581,10.606-4.394l149.996-150C331.465,94.749,331.465,85.251,325.607,79.393z">
+                                                    </path>
+                                                </g>
+                                            </svg>
+                                        </div>
+                                        <div class="submenu">
+                                            <div class="submenu-item" data-value="date-desc">
+                                                <div class="submenu-link" style="cursor: pointer;">Newest first</div>
+                                            </div>
+                                            <div class="submenu-item" data-value="date-asc">
+                                                <div class="submenu-link" style="cursor: pointer;">Oldest first</div>
+                                            </div>
+                                            <div class="submenu-item" data-value="name-asc">
+                                                <div class="submenu-link" style="cursor: pointer;">Name (A-Z)</div>
+                                            </div>
+                                            <div class="submenu-item" data-value="name-desc">
+                                                <div class="submenu-link" style="cursor: pointer;">Name (Z-A)</div>
+                                            </div>
+                                            <div class="submenu-item" data-value="size-desc">
+                                                <div class="submenu-link" style="cursor: pointer;">Largest first</div>
+                                            </div>
+                                            <div class="submenu-item" data-value="size-asc">
+                                                <div class="submenu-link" style="cursor: pointer;">Smallest first</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <button id="refreshLibraryBtn" class="refresh-btn" title="Refresh library">
                                 <svg viewBox="0 0 24 24" fill="none">
@@ -179,6 +206,48 @@
                     </button>
                     <div class="progress-bg">
                         <div class="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Download Progress Popup -->
+            <div id="downloadPopup" class="download-popup">
+                <div class="download-popup-content">
+                    <div class="download-popup-header">
+                        <div class="download-popup-icon">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="download-popup-title" id="downloadPopupTitle" data-value="Downloading">Downloading</div>
+                        <button class="download-popup-close" id="downloadPopupClose">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="download-popup-body">
+                        <div class="download-popup-filename" id="downloadPopupFilename">Preparing download...</div>
+                        <div class="download-popup-progress-container">
+                            <div class="download-popup-progress-bar">
+                                <div class="download-popup-progress-fill" id="downloadPopupProgressFill"></div>
+                            </div>
+                            <div class="download-popup-progress-text" id="downloadPopupProgressText">0%</div>
+                        </div>
+                        <div class="download-popup-stats">
+                            <div class="download-popup-stat">
+                                <span class="download-popup-stat-label">Speed</span>
+                                <span class="download-popup-stat-value" id="downloadPopupSpeed">--</span>
+                            </div>
+                            <div class="download-popup-stat">
+                                <span class="download-popup-stat-label">ETA</span>
+                                <span class="download-popup-stat-value" id="downloadPopupEta">--</span>
+                            </div>
+                            <div class="download-popup-stat">
+                                <span class="download-popup-stat-label">Size</span>
+                                <span class="download-popup-stat-value" id="downloadPopupSize">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

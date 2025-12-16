@@ -335,6 +335,9 @@ downloadBtn.addEventListener('click', () => {
   // Show progress ring
   if (progressFrame) progressFrame.classList.add('active');
   
+  // Show download popup instead of toast
+  showDownloadPopup();
+  
   // Enviar configurações junto com a URL
   window.electronAPI.downloadVideoWithSettings(url, currentSettings);
 });
@@ -343,17 +346,89 @@ openFolderBtn.addEventListener('click', () => {
   window.electronAPI.openDownloadsFolder();
 });
 
+// ===== DOWNLOAD POPUP SYSTEM =====
+const downloadPopup = document.getElementById('downloadPopup');
+const downloadPopupClose = document.getElementById('downloadPopupClose');
+const downloadPopupTitle = document.getElementById('downloadPopupTitle');
+const downloadPopupFilename = document.getElementById('downloadPopupFilename');
+const downloadPopupProgressFill = document.getElementById('downloadPopupProgressFill');
+const downloadPopupProgressText = document.getElementById('downloadPopupProgressText');
+const downloadPopupSpeed = document.getElementById('downloadPopupSpeed');
+const downloadPopupEta = document.getElementById('downloadPopupEta');
+const downloadPopupSize = document.getElementById('downloadPopupSize');
+
+// Text scramble effect
+function scrambleText(element) {
+  if (!element || !element.dataset.value) return;
+  
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let iteration = 0;
+  const targetText = element.dataset.value;
+  
+  const interval = setInterval(() => {
+    element.innerText = targetText
+      .split("")
+      .map((letter, index) => {
+        if (index < iteration) {
+          return targetText[index];
+        }
+        return letters[Math.floor(Math.random() * 26)];
+      })
+      .join("");
+    
+    if (iteration >= targetText.length) {
+      clearInterval(interval);
+    }
+    
+    iteration += 1 / 3;
+  }, 30);
+}
+
+function showDownloadPopup() {
+  downloadPopup?.classList.add('active');
+  
+  // Trigger text scramble effect
+  if (downloadPopupTitle) {
+    setTimeout(() => scrambleText(downloadPopupTitle), 100);
+  }
+  
+  // Reset values
+  if (downloadPopupFilename) downloadPopupFilename.textContent = 'Preparing download...';
+  if (downloadPopupProgressFill) downloadPopupProgressFill.style.width = '0%';
+  if (downloadPopupProgressText) downloadPopupProgressText.textContent = '0%';
+  if (downloadPopupSpeed) downloadPopupSpeed.textContent = '--';
+  if (downloadPopupEta) downloadPopupEta.textContent = '--';
+  if (downloadPopupSize) downloadPopupSize.textContent = '--';
+}
+
+function hideDownloadPopup() {
+  downloadPopup?.classList.remove('active');
+}
+
+downloadPopupClose?.addEventListener('click', () => {
+  hideDownloadPopup();
+});
+
 // Listen for download progress updates from the main process
 window.electronAPI.onDownloadProgress((data) => {
   updateStatus(data, true); // Append para debug, sobrescrever para normal
 
-  const progressMatch = data.match(/(\d+\.\d+)%/);
+  // Parse progress percentage
+  const progressMatch = data.match(/(\d+\.?\d*)%/);
   if (progressMatch && progressMatch[1]) {
     const percent = parseFloat(progressMatch[1]);
     const progressRing = document.getElementById('progressRing');
     
     // Update text
     progressText.textContent = `${Math.floor(percent)}%`;
+    
+    // Update popup progress
+    if (downloadPopupProgressFill) {
+      downloadPopupProgressFill.style.width = `${percent}%`;
+    }
+    if (downloadPopupProgressText) {
+      downloadPopupProgressText.textContent = `${Math.floor(percent)}%`;
+    }
     
     // Update ring
     if (progressRing) {
@@ -362,6 +437,32 @@ window.electronAPI.onDownloadProgress((data) => {
       const offset = circumference - (percent / 100) * circumference;
       progressRing.style.strokeDashoffset = offset;
     }
+  }
+
+  // Parse download speed (e.g., "5.2MiB/s" or "1.5MB/s")
+  const speedMatch = data.match(/(\d+\.?\d*\s*[KMG]i?B\/s)/i);
+  if (speedMatch && downloadPopupSpeed) {
+    downloadPopupSpeed.textContent = speedMatch[1];
+  }
+
+  // Parse ETA (e.g., "00:05" or "01:23:45")
+  const etaMatch = data.match(/ETA\s+(\d{2}:\d{2}(?::\d{2})?)/i);
+  if (etaMatch && downloadPopupEta) {
+    downloadPopupEta.textContent = etaMatch[1];
+  }
+
+  // Parse file size (e.g., "125.5MiB" or "1.2GiB")
+  const sizeMatch = data.match(/of\s+~?\s*(\d+\.?\d*\s*[KMG]i?B)/i);
+  if (sizeMatch && downloadPopupSize) {
+    downloadPopupSize.textContent = sizeMatch[1];
+  }
+
+  // Parse filename from [download] Destination: path
+  const filenameMatch = data.match(/\[download\]\s+Destination:\s+(.+)/i);
+  if (filenameMatch && downloadPopupFilename) {
+    const fullPath = filenameMatch[1].trim();
+    const filename = fullPath.split(/[/\\]/).pop(); // Get last part of path
+    downloadPopupFilename.textContent = filename;
   }
 });
 
@@ -394,9 +495,35 @@ function processToastQueue() {
 
   // Update toast content
   const toastText = document.querySelector('.toast-text');
+  const toastCheckmark = document.querySelector('.toast-checkmark svg');
   const progressFill = document.querySelector('.progress-fill');
   
   toastText.textContent = message;
+
+  // Update Icon based on type
+  if (toastCheckmark) {
+    let pathD = '';
+    // Reset viewbox if needed, though standardizing on 24x24 is best
+    
+    switch(type) {
+        case 'success':
+            pathD = 'M20 6L9 17L4 12';
+            break;
+        case 'error':
+            pathD = 'M18 6L6 18M6 6l12 12';
+            break;
+        case 'info':
+            pathD = 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z';
+            break;
+        case 'warning':
+            pathD = 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z';
+            break;
+        default:
+            pathD = 'M20 6L9 17L4 12';
+    }
+    
+    toastCheckmark.innerHTML = `<path d="${pathD}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />`;
+  }
 
   // Set type class
   toastContainer.classList.remove('success', 'error', 'info', 'warning');
@@ -455,6 +582,9 @@ window.electronAPI.onDownloadSuccess(() => {
   downloadBtn.classList.remove('downloading');
   downloadBtn.textContent = 'Download';
   
+  // Hide download popup
+  hideDownloadPopup();
+  
   // Hide progress ring after a short delay to show 100%
   setTimeout(() => {
     if (progressFrame) progressFrame.classList.remove('active');
@@ -480,6 +610,9 @@ window.electronAPI.onDownloadError((errorMessage) => {
   // Restore button state on error
   downloadBtn.classList.remove('downloading');
   downloadBtn.textContent = 'Download';
+  
+  // Hide download popup
+  hideDownloadPopup();
   
   // Hide progress ring
   if (progressFrame) progressFrame.classList.remove('active');
@@ -617,7 +750,6 @@ function sortAndDisplayFiles() {
 // Setup library controls
 function setupLibraryControls() {
   const searchInput = document.getElementById('searchInput');
-  const sortSelect = document.getElementById('sortSelect');
   const refreshBtn = document.getElementById('refreshLibraryBtn');
   
   if (searchInput) {
@@ -626,9 +758,71 @@ function setupLibraryControls() {
     });
   }
   
-  if (sortSelect) {
-    sortSelect.addEventListener('change', (e) => {
-      currentSortOption = e.target.value;
+  // Custom dropdown sort logic
+  const sortMenu = document.querySelector('.sort-menu');
+  const sortMenuItem = sortMenu ? sortMenu.querySelector('.item') : null;
+  const sortMenuLink = sortMenu ? sortMenu.querySelector('.link') : null;
+  const sortItems = document.querySelectorAll('.sort-menu .submenu-item');
+  const currentSortLabel = document.getElementById('currentSortLabel');
+
+  // 1. Click to toggle menu
+  if (sortMenuLink && sortMenuItem) {
+    sortMenuLink.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent document click from closing immediately
+      sortMenuItem.classList.toggle('active');
+    });
+  }
+
+  // 2. Click outside to close
+  document.addEventListener('click', (e) => {
+    if (sortMenuItem && sortMenuItem.classList.contains('active')) {
+      if (!sortMenu.contains(e.target)) {
+        sortMenuItem.classList.remove('active');
+      }
+    }
+  });
+
+  // 3. Handle selection click
+  sortItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const value = item.dataset.value;
+      const text = item.querySelector('.submenu-link').textContent;
+      
+      currentSortOption = value;
+      if (currentSortLabel) {
+        currentSortLabel.textContent = text;
+      }
+      
+      sortAndDisplayFiles();
+      // Close menu after selection
+      if (sortMenuItem) sortMenuItem.classList.remove('active');
+    });
+  });
+
+  // 4. Scroll to change option
+  if (sortMenu) {
+    sortMenu.addEventListener('wheel', (e) => {
+      e.preventDefault(); // Prevent page scroll
+      
+      const direction = e.deltaY > 0 ? 1 : -1;
+      const itemsArray = Array.from(sortItems);
+      const currentIndex = itemsArray.findIndex(item => item.dataset.value === currentSortOption);
+      
+      let newIndex = currentIndex + direction;
+      
+      // Wrap around
+      if (newIndex >= itemsArray.length) newIndex = 0;
+      if (newIndex < 0) newIndex = itemsArray.length - 1;
+      
+      const newItem = itemsArray[newIndex];
+      const value = newItem.dataset.value;
+      const text = newItem.querySelector('.submenu-link').textContent;
+      
+      currentSortOption = value;
+      if (currentSortLabel) {
+        currentSortLabel.textContent = text;
+      }
+      
       sortAndDisplayFiles();
     });
   }
