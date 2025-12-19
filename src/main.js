@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, protocol, net, dialog } = require('electron');
 const path = require('node:path');
 const url = require('node:url');
 const { spawn, execFileSync, execFile } = require('node:child_process');
@@ -25,7 +25,12 @@ const ALLOWED_IPC_CHANNELS = new Set([
     'delete-downloaded-file',
     'delete-downloaded-file',
     'open-file-location',
-    'open-video-file'
+    'open-video-file',
+    'select-folder',
+    'folder-selected',
+    'open-specific-folder',
+    'clean-temp-files',
+    'move-temp-files-to-downloads'
 ]);
 
 // ============================================================================
@@ -736,6 +741,90 @@ createIpcHandler('open-file-location', (event, fileId) => {
         shell.showItemInFolder(file.filePath);
     } else {
         throw new Error('Arquivo não encontrado.');
+    }
+});
+
+createIpcHandler('select-folder', async (event, type) => {
+    const result = await dialog.showOpenDialog({
+        properties: ['openDirectory', 'createDirectory']
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+        event.sender.send('folder-selected', { type, path: result.filePaths[0] });
+    }
+});
+
+createIpcHandler('open-specific-folder', async (event, folderPath) => {
+    if (folderPath && fs.existsSync(folderPath)) {
+        await shell.openPath(folderPath);
+    }
+});
+
+createIpcHandler('clean-temp-files', async (event) => {
+    try {
+        const downloadsPath = app.getPath('downloads');
+        // Clean downloads path of partials
+        const cleanDir = async (dir) => {
+           if (!fs.existsSync(dir)) return;
+           const files = await fsPromises.readdir(dir);
+           for (const file of files) {
+               if (file.endsWith('.part') || file.endsWith('.ytdl') || file.endsWith('.tmp') || file.includes('.tmp')) {
+                   try {
+                       await fsPromises.unlink(path.join(dir, file));
+                       console.log('Deleted temp file:', file);
+                   } catch (e) {
+                       console.error('Failed to delete:', file, e.message);
+                   }
+               }
+           }
+        };
+
+        await cleanDir(downloadsPath);
+        
+        // Also clean system temp/ytdln-cache if it exists
+        const tempBase = app.getPath('temp');
+        await cleanDir(path.join(tempBase, 'ytdln-cache'));
+
+        event.sender.send('download-success'); 
+    } catch (e) {
+        throw new Error('Failed to clean temp files: ' + e.message);
+    }
+});
+
+createIpcHandler('move-temp-files-to-downloads', async (event) => {
+    try {
+        const downloadsPath = app.getPath('downloads');
+        const tempBase = app.getPath('temp');
+        const cacheDir = path.join(tempBase, 'ytdln-cache');
+        
+        if (fs.existsSync(cacheDir)) {
+             const files = await fsPromises.readdir(cacheDir);
+             let movedCount = 0;
+             for (const file of files) {
+                 const ext = path.extname(file).toLowerCase();
+                 // Move common media files
+                 if (['.mp4', '.mkv', '.webm', '.mp3', '.wav', '.aac', '.flac', '.opus'].includes(ext)) {
+                     const src = path.join(cacheDir, file);
+                     const dest = path.join(downloadsPath, file);
+                     try {
+                         await fsPromises.rename(src, dest);
+                         movedCount++;
+                         // Track it
+                         trackDownloadedFile('', dest, {}); 
+                     } catch (e) {
+                         console.error('Failed to move file:', file, e);
+                     }
+                 }
+             }
+             if (movedCount === 0) {
+                 // No files moved, maybe because none were there.
+                 console.log('No files to move.');
+             } else {
+                 event.sender.send('download-success');
+             }
+        }
+    } catch (e) {
+        throw new Error(e.message);
     }
 });
 

@@ -14,7 +14,10 @@ const ALLOWED_IPC_CHANNELS = new Set([
   'open-file-location',
   'open-video-file',
   'downloaded-files-list',
-  'file-deleted'
+  'file-deleted',
+  'select-folder',
+  'folder-selected',
+  'open-specific-folder'
 ]);
 
 // Função para validar canal IPC
@@ -53,7 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDownloadedFiles: makeSender('get-downloaded-files'),
   deleteDownloadedFile: makeSender('delete-downloaded-file'),
   openFileLocation: makeSender('open-file-location'),
+  openFileLocation: makeSender('open-file-location'),
   openVideoFile: makeSender('open-video-file'),
+  selectFolder: makeSender('select-folder'),
+  openSpecificFolder: makeSender('open-specific-folder'),
 
   // Listeners específicos usando os helpers
   onDownloadProgress: makeListener('download-progress'),
@@ -61,5 +67,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDownloadError: makeListener('download-error'),
   onBinariesStatus: makeListener('binaries-status'),
   onDownloadedFilesList: makeListener('downloaded-files-list'),
-  onFileDeleted: makeListener('file-deleted')
+  onDownloadedFilesList: makeListener('downloaded-files-list'),
+  onFileDeleted: makeListener('file-deleted'),
+  onFolderSelected: makeListener('folder-selected')
 });
