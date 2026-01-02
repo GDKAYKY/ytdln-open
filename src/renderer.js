@@ -1358,7 +1358,10 @@ function addFileActionListeners() {
 
 function loadDownloadedFiles() {
   showContentLoader();
-  window.electronAPI.getDownloadedFiles();
+  window.electronAPI.getDownloadedFiles({
+    musicFolder: currentSettings.musicFolder,
+    videoFolder: currentSettings.videoFolder,
+  });
 }
 
 // ===== DELETE POPUP SYSTEM =====

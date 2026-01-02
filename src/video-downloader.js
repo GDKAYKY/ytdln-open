@@ -47,23 +47,9 @@ class VideoDownloader {
     const { ffmpeg } = this.binaries;
     const args = ["--progress", "--newline"];
 
-    let fileNameTemplate = settings.fileNameTemplate || "%(title)s";
-    if (
-      settings.videoFileNameModel &&
-      settings.videoFileNameModel.trim() !== ""
-    ) {
-      fileNameTemplate = settings.videoFileNameModel;
-    }
-
-    // Determine base directory
-    const baseDir =
-      settings.videoFolder && settings.videoFolder.trim() !== ""
-        ? settings.videoFolder
-        : app.getPath("downloads");
-
     args.push(
       "-o",
-      path.join(baseDir, `${fileNameTemplate}.%(ext)s`),
+      path.join(app.getPath("downloads"), "%(title)s.%(ext)s"),
       "--ffmpeg-location",
       ffmpeg,
       "--merge-output-format",
@@ -100,53 +86,6 @@ class VideoDownloader {
 
     if (settings.noCheckCertificate) args.push("--no-check-certificate");
     if (settings.ignoreErrors) args.push("--ignore-errors");
-
-    if (settings.proxy) args.push("--proxy", settings.proxy);
-    if (settings.restrictFilenames || settings.restrictFileName)
-      args.push("--restrict-filenames");
-    if (settings.forceIpv4) args.push("--force-ipv4");
-    if (settings.useSponsorBlock) args.push("--sponsorblock-remove", "all");
-    if (settings.embedMetadata) args.push("--embed-metadata");
-    if (settings.writeAutoSubs) args.push("--write-auto-sub");
-
-    if (settings.cacheDownloadsFirst) {
-      const cacheDir = path.join(app.getPath("temp"), "ytdln-cache");
-      args.push("-P", `temp:${cacheDir}`);
-    }
-
-    if (settings.noFragments) args.push("--no-part");
-    if (settings.keepFragments) args.push("--keep-fragments");
-
-    // NEW SETTINGS
-    if (settings.useAria2) {
-      args.push("--downloader", "aria2c");
-      if (settings.connectionLimit) {
-        args.push(
-          "--downloader-args",
-          `aria2c:-x ${settings.connectionLimit} -s ${settings.connectionLimit}`
-        );
-      }
-    }
-
-    if (settings.bufferSize) {
-      args.push("--buffer-size", settings.bufferSize);
-    }
-
-    if (settings.anonymous) {
-      args.push("--no-mtime", "--no-cookies");
-    } else if (settings.useCookies) {
-      // If we wanted to support browser cookies, we'd add --cookies-from-browser here
-      // args.push("--cookies-from-browser", "chrome");
-    }
-
-    if (settings.avoidDuplicatedDownloads === "auto") {
-      const archivePath = path.join(baseDir, "download_archive.txt");
-      args.push("--download-archive", archivePath);
-    }
-
-    if (settings.cleanDownloadLeftovers === "all") {
-      args.push("--no-part");
-    }
 
     args.push(videoUrl);
     return args;
@@ -228,7 +167,6 @@ class VideoDownloader {
       });
     });
   }
-  // FIM
 }
 
 module.exports = VideoDownloader;

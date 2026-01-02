@@ -1,73 +1,75 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require("electron");
 
 const ALLOWED_IPC_CHANNELS = new Set([
-  'download-video',
-  'download-video-with-settings',
-  'check-binaries-status',
-  'download-progress',
-  'download-success',
-  'download-error',
-  'binaries-status',
-  'open-downloads-folder',
-  'get-downloaded-files',
-  'delete-downloaded-file',
-  'open-file-location',
-  'open-video-file',
-  'downloaded-files-list',
-  'file-deleted',
-  'select-folder',
-  'folder-selected',
-  'open-specific-folder'
+  "download-video",
+  "download-video-with-settings",
+  "check-binaries-status",
+  "download-progress",
+  "download-success",
+  "download-error",
+  "binaries-status",
+  "open-downloads-folder",
+  "get-downloaded-files",
+  "delete-downloaded-file",
+  "open-file-location",
+  "open-video-file",
+  "downloaded-files-list",
+  "file-deleted",
+  "select-folder",
+  "folder-selected",
+  "open-specific-folder",
+  "move-temp-files-to-downloads",
+  "clean-temp-files",
 ]);
 
-// Função para validar canal IPC
-function validateIpcChannel(channel) {
-  if (!ALLOWED_IPC_CHANNELS.has(channel)) {
-    throw new Error(`Canal IPC não permitido: ${channel}`);
-  }
-}
-
-// Helper functions para IPC
-const makeSender = (channel) => (...args) => ipcRenderer.send(channel, ...args);
-const makeListener = (channel) => (callback) => {
-  const newCB = (_, data) => callback(data);
-  ipcRenderer.on(channel, newCB);
-  return () => ipcRenderer.removeListener(channel, newCB);
+const validateChannel = (ch) => {
+  if (!ALLOWED_IPC_CHANNELS.has(ch))
+    throw new Error(`Canal IPC não permitido: ${ch}`);
 };
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  // Generic methods (continuam úteis para flexibilidade, mantendo validação)
-  send: (channel, data) => {
-    validateIpcChannel(channel);
-    ipcRenderer.send(channel, data);
-  },
-  on: (channel, callback) => {
-    validateIpcChannel(channel);
-    const newCallback = (_, data) => callback(data);
-    ipcRenderer.on(channel, newCallback);
-    return () => ipcRenderer.removeListener(channel, newCallback);
-  },
+const send = (channel, ...args) => {
+  validateChannel(channel);
+  ipcRenderer.send(channel, ...args);
+};
 
-  // Métodos específicos usando os helpers
-  downloadVideo: makeSender('download-video'),
-  downloadVideoWithSettings: makeSender('download-video-with-settings'),
-  checkBinariesStatus: makeSender('check-binaries-status'),
-  openDownloadsFolder: makeSender('open-downloads-folder'),
-  getDownloadedFiles: makeSender('get-downloaded-files'),
-  deleteDownloadedFile: makeSender('delete-downloaded-file'),
-  openFileLocation: makeSender('open-file-location'),
-  openFileLocation: makeSender('open-file-location'),
-  openVideoFile: makeSender('open-video-file'),
-  selectFolder: makeSender('select-folder'),
-  openSpecificFolder: makeSender('open-specific-folder'),
+const on = (channel, callback) => {
+  validateChannel(channel);
+  const handler = (_, data) => callback(data);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+};
 
-  // Listeners específicos usando os helpers
-  onDownloadProgress: makeListener('download-progress'),
-  onDownloadSuccess: makeListener('download-success'),
-  onDownloadError: makeListener('download-error'),
-  onBinariesStatus: makeListener('binaries-status'),
-  onDownloadedFilesList: makeListener('downloaded-files-list'),
-  onDownloadedFilesList: makeListener('downloaded-files-list'),
-  onFileDeleted: makeListener('file-deleted'),
-  onFolderSelected: makeListener('folder-selected')
+// Métodos específicos
+const methods = {
+  downloadVideo: (...args) => send("download-video", ...args),
+  downloadVideoWithSettings: (...args) =>
+    send("download-video-with-settings", ...args),
+  checkBinariesStatus: () => send("check-binaries-status"),
+  openDownloadsFolder: () => send("open-downloads-folder"),
+  getDownloadedFiles: () => send("get-downloaded-files"),
+  deleteDownloadedFile: (...args) => send("delete-downloaded-file", ...args),
+  openFileLocation: (...args) => send("open-file-location", ...args),
+  openVideoFile: (...args) => send("open-video-file", ...args),
+  selectFolder: (...args) => send("select-folder", ...args),
+  openSpecificFolder: (...args) => send("open-specific-folder", ...args),
+  moveTempFilesToDownloads: () => send("move-temp-files-to-downloads"),
+  cleanTempFiles: () => send("clean-temp-files"),
+};
+
+// Listeners
+const listeners = {
+  onDownloadProgress: (cb) => on("download-progress", cb),
+  onDownloadSuccess: (cb) => on("download-success", cb),
+  onDownloadError: (cb) => on("download-error", cb),
+  onBinariesStatus: (cb) => on("binaries-status", cb),
+  onDownloadedFilesList: (cb) => on("downloaded-files-list", cb),
+  onFileDeleted: (cb) => on("file-deleted", cb),
+  onFolderSelected: (cb) => on("folder-selected", cb),
+};
+
+contextBridge.exposeInMainWorld("electronAPI", {
+  send,
+  on,
+  ...methods,
+  ...listeners,
 });

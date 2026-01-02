@@ -2,7 +2,7 @@
   --color-black: #000000;
   --color-white: #ffffff;
   --color-dark-gray-1: #121212;
-  --background-color: #151515;
+  --background-color: #131313;
   --color-dark-gray-3: #1c1c1c;
   --color-dark-gray-4: #222222;
   --color-medium-gray: #383838;
@@ -51,7 +51,7 @@ body {
 
 /* Background frame using flexbox */
 .background {
-  background: var(--background-color);
+  background: #131313;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -90,11 +90,12 @@ body {
 }
 
 .title {
-  font-style: normal;
+  font-family: "Schibsted Grotesk", sans-serif;
   font-weight: 700;
   font-size: 24px;
-  line-height: 29px;
-  color: var(--text-color);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--color-white);
 }
 
 .build-version {
@@ -407,7 +408,7 @@ body {
 
 .toggle-console-btn:hover {
   background: var(--color-dark-gray-4);
-  border-color: var(--color-bright-green);
+  border-color: var(--color-white);
 }
 
 .console-section.collapsed .toggle-console-btn svg {
@@ -566,7 +567,7 @@ body {
 
 .sort-select:focus {
   outline: none;
-  border-color: var(--color-bright-green);
+  border-color: var(--color-white);
 }
 
 .refresh-btn {
@@ -1258,7 +1259,6 @@ body {
 }
 
 /* Modal styles */
-/* Modal styles */
 .modal {
   display: none;
   position: fixed;
@@ -1270,6 +1270,7 @@ body {
   overflow: hidden;
   background-color: rgba(0, 0, 0, 0.6);
   opacity: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   visibility: hidden;
   transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
   -webkit-backdrop-filter: blur(8px);
@@ -1282,17 +1283,16 @@ body {
 }
 
 .modal-content {
-  background: rgba(30, 30, 30, 0.85);
+  background: var(--background-color);
   margin: 6% auto;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   width: 90%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   max-width: 580px;
   color: var(--text-color);
-  box-shadow:
-    0 20px 50px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   transform: scale(0.95) translateY(10px);
   opacity: 0;
   transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
@@ -1316,11 +1316,6 @@ body {
   left: 0;
   right: 0;
   height: 100%;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    transparent 40%
-  );
   pointer-events: none;
   z-index: 0;
 }
@@ -1329,11 +1324,11 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 24px 28px;
   position: relative;
   z-index: 1;
-  background: rgba(30, 30, 30, 0.5);
+  background-color: #131313;
 }
 
 .modal-header h2 {
@@ -1373,6 +1368,25 @@ body {
   overflow-y: auto;
   position: relative;
   z-index: 1;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-medium-gray) transparent;
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--color-medium-gray);
+  border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-text-color);
 }
 
 /* Tabs */
@@ -1380,7 +1394,7 @@ body {
   display: flex;
   padding: 0 28px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(20, 20, 20, 0.3);
+  background: rgba(10, 10, 10, 0.3);
 }
 
 .tab-btn {
@@ -1390,7 +1404,7 @@ body {
   margin-right: 24px;
   cursor: pointer;
   color: var(--secondary-text-color);
-  font-family: "Inter", sans-serif;
+  font-family: "Schibsted Grotesk", sans-serif;
   font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
@@ -1413,8 +1427,8 @@ body {
   left: 0;
   width: 100%;
   height: 2px;
-  background: var(--color-bright-green);
-  box-shadow: 0 -2px 8px rgba(40, 167, 69, 0.4);
+  background: var(--color-white);
+  box-shadow: 0 -2px 8px rgba(255, 255, 255, 0.4);
   animation: tabSlide 0.3s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
@@ -1445,7 +1459,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 16px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .setting-item:last-child {
@@ -1462,7 +1476,7 @@ body {
 .setting-item input[type="text"],
 .setting-item input[type="number"],
 .setting-item select {
-  background: rgba(18, 18, 18, 0.8);
+  background: rgba(10, 10, 10, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 8px 12px;
@@ -1486,8 +1500,8 @@ body {
 .setting-item input:focus,
 .setting-item select:focus {
   border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(25, 25, 25, 1);
-  box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.1);
+  background: rgba(20, 20, 20, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
 .setting-item input:hover,
@@ -1512,9 +1526,8 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--color-bright-green);
+  background: var(--color-white);
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(40, 167, 69, 0.3);
   transition: transform 0.2s;
 }
 
@@ -1536,9 +1549,9 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 20px 28px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(20, 20, 20, 0.3);
+  padding: 16px 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 10, 10, 0.5);
   border-radius: 0 0 16px 16px;
   z-index: 10;
 }
@@ -1556,19 +1569,16 @@ body {
 }
 
 #saveSettingsBtn {
-  background: linear-gradient(
-    135deg,
-    var(--color-medium-green) 0%,
-    var(--color-dark-green-1) 100%
-  );
-  color: #fff;
+  background: var(--color-light-gray);
+  color: var(--color-black);
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.2),
     0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 }
 
 #saveSettingsBtn:hover {
-  background: linear-gradient(135deg, #518555 0%, #354536 100%);
+  background-color: var(--color-white);
+  color: var(--color-black);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
@@ -2585,10 +2595,10 @@ body {
 }
 
 .settings-group-title {
-  font-family: "Inter", sans-serif;
+  font-family: "Schibsted Grotesk", sans-serif;
   font-size: 14px;
   font-weight: 700;
-  color: var(--color-bright-green);
+  color: var(--color-white);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 16px;
@@ -2624,7 +2634,7 @@ body {
   height: 16px !important;
   margin: 0;
   cursor: pointer;
-  accent-color: var(--color-bright-green);
+  accent-color: var(--color-white);
 }
 
 .radio-label {
@@ -2659,7 +2669,7 @@ body {
   font-family: "Inter", sans-serif;
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-bright-green);
+  color: var(--color-white);
   min-width: 24px;
   text-align: right;
 }
