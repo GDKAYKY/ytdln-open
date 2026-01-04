@@ -363,7 +363,8 @@ async function getDownloadedFiles(customPaths = []) {
 async function trackDownloadedFile(
   videoUrl,
   specificPath = null,
-  settings = {}
+  settings = {},
+  duration = 0
 ) {
   try {
     const downloadsPath = app.getPath("downloads");
@@ -437,6 +438,7 @@ async function trackDownloadedFile(
         format: path.extname(fileName).substring(1).toUpperCase(),
         url: videoUrl,
         thumbnail: thumbnailPath,
+        duration: duration,
       });
     }
   } catch (error) {

@@ -34,7 +34,10 @@ class VideoDownloader {
         }
         try {
           const info = JSON.parse(infoJson);
-          resolve({ acodec: info.acodec || "" });
+          resolve({
+            acodec: info.acodec || "",
+            duration: info.duration || 0,
+          });
         } catch (e) {
           console.error("Error parsing video JSON:", e);
           resolve(null);
@@ -97,9 +100,13 @@ class VideoDownloader {
     }
 
     let acodec = "";
+    let duration = 0;
     try {
       const info = await this.getVideoInfo(videoUrl);
-      if (info) acodec = info.acodec;
+      if (info) {
+        acodec = info.acodec;
+        duration = info.duration;
+      }
     } catch (e) {
       console.warn(
         "Could not get video info, proceeding without codec check",
@@ -160,7 +167,7 @@ class VideoDownloader {
 
       process.on("close", (code) => {
         if (code === 0) {
-          resolve(detectedPath);
+          resolve({ detectedPath, duration });
         } else {
           reject(new Error(`yt-dlp exited with code ${code}`));
         }

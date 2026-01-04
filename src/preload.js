@@ -46,7 +46,7 @@ const methods = {
     send("download-video-with-settings", ...args),
   checkBinariesStatus: () => send("check-binaries-status"),
   openDownloadsFolder: () => send("open-downloads-folder"),
-  getDownloadedFiles: () => send("get-downloaded-files"),
+  getDownloadedFiles: (...args) => send("get-downloaded-files", ...args),
   deleteDownloadedFile: (...args) => send("delete-downloaded-file", ...args),
   openFileLocation: (...args) => send("open-file-location", ...args),
   openVideoFile: (...args) => send("open-video-file", ...args),

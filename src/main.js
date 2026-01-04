@@ -32,7 +32,6 @@ const ALLOWED_IPC_CHANNELS = new Set([
   "open-downloads-folder",
   "get-downloaded-files",
   "delete-downloaded-file",
-  "delete-downloaded-file",
   "open-file-location",
   "open-video-file",
   "select-folder",
@@ -139,12 +138,6 @@ async function initializeBinaries() {
   }
 }
 
-// Library management moved to library-manager.js
-
-// ============================================================================
-// YT-DLP UTILITIES
-// ============================================================================
-
 // ============================================================================
 // VALIDATION HELPERS
 // ============================================================================
@@ -195,16 +188,21 @@ createIpcHandler(
     if (!validateVideoUrlOrNotify(event, videoUrl)) return;
 
     try {
-      const detectedPath = await videoDownloader.download(videoUrl, settings, {
-        onProgress: (msg) => event.sender.send("download-progress", msg),
-        onError: (msg) => event.sender.send("download-error", msg),
-      });
+      const { detectedPath, duration } = await videoDownloader.download(
+        videoUrl,
+        settings,
+        {
+          onProgress: (msg) => event.sender.send("download-progress", msg),
+          onError: (msg) => event.sender.send("download-error", msg),
+        }
+      );
 
       console.log("Download completed successfully.");
       await libraryManager.trackDownloadedFile(
         videoUrl,
         detectedPath,
-        settings
+        settings,
+        duration
       );
       event.sender.send("download-success");
     } catch (err) {
@@ -388,9 +386,11 @@ function createWindow() {
     mainWindow.show();
   });
 
-  mainWindow.loadFile("src/index.html").then((r) => {
-    console.log(r);
-  });
+  mainWindow
+    .loadFile(path.join(__dirname, "../ui/dist/index.html"))
+    .then((r) => {
+      console.log(r);
+    });
   return mainWindow;
 }
 

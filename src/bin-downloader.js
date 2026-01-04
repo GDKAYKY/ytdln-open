@@ -1,20 +1,22 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const https = require('node:https');
-const { spawnSync } = require('node:child_process');
+const fs = require("node:fs");
+const path = require("node:path");
+const https = require("node:https");
+const { spawnSync } = require("node:child_process");
 
-const BIN_DIR = path.join(__dirname, '..', 'bin');
+const BIN_DIR = path.join(__dirname, "..", "bin");
 
 const URLS = {
-  'yt-dlp.exe': 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
-  'ffmpeg.zip': 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+  "yt-dlp.exe":
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+  "ffmpeg.zip":
+    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
 };
 
 const ALLOWED_BINARIES = new Set([
-  'yt-dlp.exe',
-  'ffmpeg.exe',
-  'ffprobe.exe',
-  'ffplay.exe'
+  "yt-dlp.exe",
+  "ffmpeg.exe",
+  "ffprobe.exe",
+  "ffplay.exe",
 ]);
 
 function ensureDir(dir) {
@@ -27,45 +29,53 @@ function downloadFile(url, outPath) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(outPath);
 
-    https.get(url, res => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close();
-        return downloadFile(res.headers.location, outPath).then(resolve).catch(reject);
-      }
+    https
+      .get(url, (res) => {
+        if (
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          file.close();
+          return downloadFile(res.headers.location, outPath)
+            .then(resolve)
+            .catch(reject);
+        }
 
-      if (res.statusCode !== 200) {
-        file.close();
-        return reject(new Error(`HTTP ${res.statusCode}`));
-      }
+        if (res.statusCode !== 200) {
+          file.close();
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
 
-      res.pipe(file);
+        res.pipe(file);
 
-      file.on('finish', () => {
-        file.close(resolve);
-      });
+        file.on("finish", () => {
+          file.close(resolve);
+        });
 
-      file.on('error', err => {
+        file.on("error", (err) => {
+          file.close();
+          if (fs.existsSync(outPath)) fs.rmSync(outPath);
+          reject(err);
+        });
+      })
+      .on("error", (err) => {
         file.close();
         if (fs.existsSync(outPath)) fs.rmSync(outPath);
         reject(err);
       });
-    }).on('error', err => {
-      file.close();
-      if (fs.existsSync(outPath)) fs.rmSync(outPath);
-      reject(err);
-    });
   });
 }
 
 function extractZipWindows(zipPath, targetDir) {
   const result = spawnSync(
-    'powershell',
+    "powershell",
     [
-      '-NoProfile',
-      '-Command',
-      `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${targetDir}'`
+      "-NoProfile",
+      "-Command",
+      `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${targetDir}'`,
     ],
-    { stdio: 'ignore' }
+    { stdio: "ignore" }
   );
 
   if (result.error) {
@@ -80,7 +90,7 @@ function normalizeBinDirectory() {
     const full = path.join(BIN_DIR, entry);
 
     if (fs.statSync(full).isDirectory()) {
-      const search = dir => {
+      const search = (dir) => {
         for (const item of fs.readdirSync(dir)) {
           const itemPath = path.join(dir, item);
           const stat = fs.statSync(itemPath);
@@ -122,10 +132,10 @@ class BinaryDownloader {
     ensureDir(BIN_DIR);
 
     const binaryPaths = {
-      ytdlp: path.join(BIN_DIR, 'yt-dlp.exe'),
-      ffmpeg: path.join(BIN_DIR, 'ffmpeg.exe'),
-      ffprobe: path.join(BIN_DIR, 'ffprobe.exe'),
-      ffplay: path.join(BIN_DIR, 'ffplay.exe')
+      ytdlp: path.join(BIN_DIR, "yt-dlp.exe"),
+      ffmpeg: path.join(BIN_DIR, "ffmpeg.exe"),
+      ffprobe: path.join(BIN_DIR, "ffprobe.exe"),
+      ffplay: path.join(BIN_DIR, "ffplay.exe"),
     };
 
     const missingYtdlp = !fs.existsSync(binaryPaths.ytdlp);
@@ -139,15 +149,15 @@ class BinaryDownloader {
     }
 
     if (missingYtdlp) {
-      await downloadFile(URLS['yt-dlp.exe'], binaryPaths.ytdlp);
+      await downloadFile(URLS["yt-dlp.exe"], binaryPaths.ytdlp);
     }
 
     if (missingFFmpeg) {
-      const zipPath = path.join(BIN_DIR, 'ffmpeg.zip');
-      await downloadFile(URLS['ffmpeg.zip'], zipPath);
+      const zipPath = path.join(BIN_DIR, "ffmpeg.zip");
+      await downloadFile(URLS["ffmpeg.zip"], zipPath);
 
       if (!fs.existsSync(zipPath) || fs.statSync(zipPath).size === 0) {
-        throw new Error('FFmpeg download failed');
+        throw new Error("FFmpeg download failed");
       }
 
       extractZipWindows(zipPath, BIN_DIR);
@@ -158,12 +168,12 @@ class BinaryDownloader {
         !fs.existsSync(binaryPaths.ffprobe) ||
         !fs.existsSync(binaryPaths.ffplay)
       ) {
-        throw new Error('FFmpeg extraction incomplete');
+        throw new Error("FFmpeg extraction incomplete");
       }
     }
 
     cleanup();
-    return binaryPaths.ytdlp, binaryPaths.ffmpeg, binaryPaths.ffprobe, binaryPaths.ffplay;
+    return binaryPaths;
   }
 }
 module.exports = BinaryDownloader;
