@@ -27,12 +27,15 @@ function App() {
                 setStatus(`Binaries ready! OS: ${data.platform} (${data.arch})`);
             } else {
                  setStatus(`Status: ${data.message}`);
-                 // if (data.status !== 'error') setLoading(false); 
             }
         });
         window.electronAPI.checkBinariesStatus();
+
+        return () => {
+          if (typeof onStatus === 'function') onStatus();
+        };
     } else {
-        // Dev mode fallback or just hide loader if no electron
+        // Dev mode fallback
         setTimeout(() => setLoading(false), 2000);
     }
   }, []);

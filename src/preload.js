@@ -20,6 +20,12 @@ const ALLOWED_IPC_CHANNELS = new Set([
   "open-specific-folder",
   "move-temp-files-to-downloads",
   "clean-temp-files",
+  "external-download-request",
+  "queue:add",
+  "queue:remove",
+  "queue:get-state",
+  "queue:update",
+  "queue:progress",
 ]);
 
 const validateChannel = (ch) => {
@@ -54,6 +60,9 @@ const methods = {
   openSpecificFolder: (...args) => send("open-specific-folder", ...args),
   moveTempFilesToDownloads: () => send("move-temp-files-to-downloads"),
   cleanTempFiles: () => send("clean-temp-files"),
+  addToQueue: (data) => send("queue:add", data),
+  removeFromQueue: (id) => send("queue:remove", { id }),
+  getQueueState: () => ipcRenderer.invoke("queue:get-state"),
 };
 
 // Listeners
@@ -65,6 +74,9 @@ const listeners = {
   onDownloadedFilesList: (cb) => on("downloaded-files-list", cb),
   onFileDeleted: (cb) => on("file-deleted", cb),
   onFolderSelected: (cb) => on("folder-selected", cb),
+  onExternalDownload: (cb) => on("external-download-request", cb),
+  onQueueUpdate: (cb) => on("queue:update", cb),
+  onQueueProgress: (cb) => on("queue:progress", cb),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", {

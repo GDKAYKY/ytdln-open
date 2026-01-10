@@ -16,10 +16,80 @@ const BinaryDownloader = require("./bin-downloader");
 // INICIO
 const VideoDownloader = require("./video-downloader");
 const libraryManager = require("./main/library-manager");
+const queueManager = require("./main/queue-manager");
+const server = require("./server");
 // FIM
 const fs = require("node:fs");
 const fsPromises = require("node:fs/promises");
 const crypto = require("node:crypto");
+
+// Registro do protocolo customizado para Deep Linking
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("ytdln-open", process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
+  }
+} else {
+  app.setAsDefaultProtocolClient("ytdln-open");
+}
+
+let mainWindow = null;
+
+// Garante que apenas uma instância do app esteja rodando
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (event, commandLine) => {
+    // O comando vem como um array, a URL do protocolo costuma ser o último item
+    const url = commandLine.find((arg) => arg.startsWith("ytdln-open://"));
+    if (url) {
+      handleDeepLink(url);
+    }
+
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+function handleDeepLink(urlStr) {
+  try {
+    const parsedUrl = new URL(urlStr);
+    // Exemplo: ytdln-open://download?url=https://youtube.com/watch?v=...&settings=ey...
+    const videoUrl = parsedUrl.searchParams.get("url");
+    const settingsStr = parsedUrl.searchParams.get("settings");
+    let externalSettings = null;
+
+    if (settingsStr) {
+      try {
+        const decoded = Buffer.from(settingsStr, "base64").toString("utf8");
+        externalSettings = JSON.parse(decoded);
+      } catch (e) {
+        console.error("Erro ao decodificar configurações externas:", e);
+      }
+    }
+
+    if (videoUrl && mainWindow) {
+      let cleanVideoUrl = videoUrl;
+      // Sanitize blob URLs coming from older extension versions or edge cases
+      if (cleanVideoUrl.startsWith("blob:")) {
+        const match = cleanVideoUrl.match(/blob:(https?:\/\/.+)/);
+        if (match) cleanVideoUrl = match[1];
+      }
+
+      mainWindow.webContents.send("external-download-request", {
+        url: cleanVideoUrl,
+        settings: externalSettings,
+      });
+    }
+  } catch (e) {
+    console.error("Erro ao processar Deep Link:", e);
+  }
+}
 
 const ALLOWED_IPC_CHANNELS = new Set([
   "download-video",
@@ -38,6 +108,11 @@ const ALLOWED_IPC_CHANNELS = new Set([
   "open-specific-folder",
   "move-temp-files-to-downloads",
   "clean-temp-files",
+  "queue:add",
+  "queue:remove",
+  "queue:get-state",
+  "queue:update",
+  "queue:progress",
 ]);
 
 // ============================================================================
@@ -186,29 +261,7 @@ createIpcHandler(
   "download-video-with-settings",
   async (event, videoUrl, settings) => {
     if (!validateVideoUrlOrNotify(event, videoUrl)) return;
-
-    try {
-      const { detectedPath, duration } = await videoDownloader.download(
-        videoUrl,
-        settings,
-        {
-          onProgress: (msg) => event.sender.send("download-progress", msg),
-          onError: (msg) => event.sender.send("download-error", msg),
-        }
-      );
-
-      console.log("Download completed successfully.");
-      await libraryManager.trackDownloadedFile(
-        videoUrl,
-        detectedPath,
-        settings,
-        duration
-      );
-      event.sender.send("download-success");
-    } catch (err) {
-      console.error("Download failed:", err);
-      event.sender.send("download-error", err.message);
-    }
+    ipcMain.emit("queue:add", event, { url: videoUrl, settings });
   }
 );
 // FIM
@@ -232,12 +285,12 @@ ipcMain.on("download-video", async (event, videoUrl) => {
     ignoreErrors: true,
     audioFormat: "best",
   };
-  ipcMain.emit(
-    "download-video-with-settings",
-    event,
-    videoUrl,
-    defaultSettings
-  );
+
+  // Redireciona para a fila em vez de baixar direto
+  ipcMain.emit("queue:add", event, {
+    url: videoUrl,
+    settings: defaultSettings,
+  });
 });
 
 ipcMain.on("check-binaries-status", (event) => {
@@ -369,7 +422,7 @@ createIpcHandler("clean-temp-files", async (event) => {
 // ============================================================================
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     show: false,
@@ -386,11 +439,7 @@ function createWindow() {
     mainWindow.show();
   });
 
-  mainWindow
-    .loadFile(path.join(__dirname, "../ui/dist/index.html"))
-    .then((r) => {
-      console.log(r);
-    });
+  mainWindow.loadFile(path.join(__dirname, "../ui/dist/index.html"));
   return mainWindow;
 }
 
@@ -416,7 +465,16 @@ function createWindow() {
     });
 
     // Create window FIRST to show loading screen
-    const mainWindow = createWindow();
+    createWindow();
+
+    // No Windows/Linux, processamos a URL de inicialização se houver
+    const startUrl = process.argv.find((arg) =>
+      arg.startsWith("ytdln-open://")
+    );
+    if (startUrl) {
+      // Pequeno delay para garantir que o renderer está pronto
+      setTimeout(() => handleDeepLink(startUrl), 2000);
+    }
 
     try {
       console.log("Initializing binaries...");
@@ -435,6 +493,17 @@ function createWindow() {
       }
 
       libraryManager.loadDownloadedFiles();
+      await queueManager.init();
+      server.setDownloader(videoDownloader);
+      server.init();
+
+      // Sincronizar eventos da fila com o servidor WS
+      ipcMain.on("queue:update", (event, data) => {
+        server.broadcast("QUEUE_UPDATE", data);
+      });
+      ipcMain.on("queue:progress", (event, data) => {
+        server.broadcast("QUEUE_PROGRESS", data);
+      });
     } catch (initError) {
       console.error("Binary initialization failed:", initError);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -454,4 +523,8 @@ app.on("activate", function () {
 
 app.on("window-all-closed", function () {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("will-quit", () => {
+  server.close();
 });

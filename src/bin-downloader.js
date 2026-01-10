@@ -1,6 +1,5 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const https = require("node:https");
 const { spawnSync } = require("node:child_process");
 
 const BIN_DIR = path.join(__dirname, "..", "bin");
@@ -25,46 +24,32 @@ function ensureDir(dir) {
   }
 }
 
-function downloadFile(url, outPath) {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(outPath);
+/**
+ * Padrão Node 25+: Usar fetch() nativo em vez do módulo https legado.
+ */
+async function downloadFile(url, outPath) {
+  const response = await fetch(url);
 
-    https
-      .get(url, (res) => {
-        if (
-          res.statusCode >= 300 &&
-          res.statusCode < 400 &&
-          res.headers.location
-        ) {
-          file.close();
-          return downloadFile(res.headers.location, outPath)
-            .then(resolve)
-            .catch(reject);
-        }
+  if (!response.ok) {
+    throw new Error(
+      `Falha ao baixar arquivo: ${response.status} ${response.statusText}`
+    );
+  }
 
-        if (res.statusCode !== 200) {
-          file.close();
-          return reject(new Error(`HTTP ${res.statusCode}`));
-        }
+  const fileStream = fs.createWriteStream(outPath);
+  // O ReadableStream do fetch precisa ser convertido ou consumido corretamente
+  const reader = response.body.getReader();
 
-        res.pipe(file);
-
-        file.on("finish", () => {
-          file.close(resolve);
-        });
-
-        file.on("error", (err) => {
-          file.close();
-          if (fs.existsSync(outPath)) fs.rmSync(outPath);
-          reject(err);
-        });
-      })
-      .on("error", (err) => {
-        file.close();
-        if (fs.existsSync(outPath)) fs.rmSync(outPath);
-        reject(err);
-      });
-  });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fileStream.write(Buffer.from(value));
+    }
+  } finally {
+    fileStream.end();
+    reader.releaseLock();
+  }
 }
 
 function extractZipWindows(zipPath, targetDir) {

@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>YTDLN-OPEN - Configurações</title>
+    <link rel="stylesheet" href="options.css" />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="main-layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img src="../icons/icon128.png" alt="Logo">
+                <h2>YTDLN</h2>
+            </div>
+            <nav class="tabs">
+                <button class="tab-btn active" data-tab="basic">
+                    <i class="material-icons">settings</i> Basic
+                </button>
+                <button class="tab-btn" data-tab="folders">
+                    <i class="material-icons">folder</i> Folders
+                </button>
+                <button class="tab-btn" data-tab="download">
+                    <i class="material-icons">downloading</i> Download
+                </button>
+                <button class="tab-btn" data-tab="processing">
+                    <i class="material-icons">memory</i> Processing
+                </button>
+                <button class="tab-btn" data-tab="update">
+                    <i class="material-icons">update</i> Update
+                </button>
+                <button class="tab-btn" data-tab="advanced">
+                    <i class="material-icons">extension</i> Advanced
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="save" class="save-btn">Save Changes</button>
+                <div id="status"></div>
+                <button id="reset" class="reset-btn">Reset Defaults</button>
+            </div>
+        </aside>
+
+        <main class="container">
+            <div class="content">
+        <div class="modal-body">
+          <!-- BASIC TAB -->
+          <div id="basic" class="tab-content active">
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">movie</i>
+                <label>Output Format:</label>
+              </div>
+              <select id="outputFormat">
+                <option value="mp4">MP4</option>
+                <option value="mkv">MKV</option>
+                <option value="webm">WebM</option>
+              </select>
+            </div>
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">hd</i>
+                <label>Quality:</label>
+              </div>
+              <select id="quality">
+                <option value="best">Best</option>
+                <option value="1080p">1080p</option>
+                <option value="720p">720p</option>
+                <option value="480p">480p</option>
+                <option value="360p">360p</option>
+              </select>
+            </div>
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">audiotrack</i>
+                <label>Audio Format:</label>
+              </div>
+              <select id="audioFormat">
+                <option value="best">Best</option>
+                <option value="mp3">MP3</option>
+                <option value="m4a">M4A</option>
+                <option value="opus">Opus</option>
+                <option value="wav">WAV</option>
+                <option value="flac">FLAC</option>
+              </select>
+            </div>
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">grid_view</i>
+                <label>Concurrent Fragments:</label>
+              </div>
+              <div class="range-container">
+                <input
+                  type="range"
+                  id="concurrentFragments"
+                  min="1"
+                  max="25"
+                  step="1"
+                />
+                <span class="range-value" id="val_concurrentFragments">8</span>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">subtitles</i>
+                <label>Embed Subtitles:</label>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="embedSubs" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">code</i>
+                <label>Write Info JSON:</label>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="writeInfoJson" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <div class="setting-label-group">
+                <i class="material-icons">terminal</i>
+                <label>Show Console:</label>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="showConsole" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- FOLDERS TAB -->
+          <div id="folders" class="tab-content">
+            <div class="settings-group">
+              <h3 class="settings-group-title">Naming Models</h3>
+              <div class="setting-item">
+                <label>Video Filename Model:</label>
+                <input
+                  type="text"
+                  id="videoFileNameModel"
+                  placeholder="%(title)s"
+                />
+              </div>
+              <div class="setting-item">
+                <label>Music Filename Model:</label>
+                <input
+                  type="text"
+                  id="musicFileNameModel"
+                  placeholder="%(title)s"
+                />
+              </div>
+              <div class="setting-item">
+                <label>Restrict Filenames:</label>
+                <label class="switch">
+                  <input type="checkbox" id="restrictFileName" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Processing & Maintenance</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">cached</i>
+                  <label>Cache Downloads First:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="cacheDownloadsFirst" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">layers_clear</i>
+                  <label>No Fragments:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="noFragments" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">layers</i>
+                  <label>Keep Fragments:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="keepFragments" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- DOWNLOAD TAB -->
+          <div id="download" class="tab-content">
+            <div class="settings-group">
+              <h3 class="settings-group-title">General</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">visibility_off</i>
+                  <label>Anonymous:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="anonymous" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">smart_display</i>
+                  <label>Show Download Card:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="showDownloadCard" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">speed</i>
+                  <label>Fast Download:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="fastDownload" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">cookie</i>
+                  <label>Use Cookies:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="useCookies" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Connection & Proxy</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">settings_ethernet</i>
+                  <label>Proxy Socks5 URL:</label>
+                </div>
+                <input
+                  type="text"
+                  id="proxy"
+                  placeholder="socks5://user:pass@host:port"
+                />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">network_check</i>
+                  <label>Force IPV4:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="forceIpv4" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">rocket_launch</i>
+                  <label>Use aria2:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="useAria2" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">multiple_stop</i>
+                  <label>Connection Limit:</label>
+                </div>
+                <input type="text" id="connectionLimit" placeholder="e.g. 5" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">memory</i>
+                  <label>Buffer Size:</label>
+                </div>
+                <input type="text" id="bufferSize" placeholder="e.g. 16K" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">timer</i>
+                  <label>Socket Time Limit (s):</label>
+                </div>
+                <input type="text" id="socketTimeout" placeholder="30" />
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Download Behavior</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">download_for_offline</i>
+                  <label>Predefined Download Type:</label>
+                </div>
+                <select id="preferredDownloadType">
+                  <option value="video">Video</option>
+                  <option value="audio">Audio</option>
+                  <option value="ask">Ask</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">save</i>
+                  <label>Remember Download Type:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="rememberDownloadType" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">difference</i>
+                  <label>Avoid Duplicated Downloads:</label>
+                </div>
+                <select id="avoidDuplicatedDownloads">
+                  <option value="none">None</option>
+                  <option value="ask">Ask</option>
+                  <option value="auto">Auto</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">cleaning_services</i>
+                  <label>Clean Download Leftovers:</label>
+                </div>
+                <select id="cleanDownloadLeftovers">
+                  <option value="none">None</option>
+                  <option value="temp">Temporary</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">history</i>
+                  <label>Download Registry:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="downloadRegistry" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Limits & Trials</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">downloading</i>
+                  <label>Simultaneous Downloads:</label>
+                </div>
+                <div class="range-container">
+                  <input
+                    type="range"
+                    id="concurrentDownloads"
+                    min="1"
+                    max="10"
+                    step="1"
+                  />
+                  <span class="range-value" id="val_concurrentDownloads"
+                    >1</span
+                  >
+                </div>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">refresh</i>
+                  <label>New Trials (Retries):</label>
+                </div>
+                <input type="text" id="retries" placeholder="5" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">refresh</i>
+                  <label>New Fragment Trials:</label>
+                </div>
+                <input type="text" id="fragmentRetries" placeholder="5" />
+              </div>
+            </div>
+          </div>
+
+          <!-- PROCESSING TAB -->
+          <div id="processing" class="tab-content">
+            <div class="settings-group">
+              <h3 class="settings-group-title">General</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">attach_money</i>
+                  <label>Enable SponsorBlock:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="useSponsorBlock" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" id="sponsorBlockApiUrlContainer">
+                <div class="setting-label-group">
+                  <i class="material-icons">api</i>
+                  <label>SponsorBlock API URL:</label>
+                </div>
+                <input
+                  type="text"
+                  id="sponsorBlockApiUrl"
+                  placeholder="https://sponsor.ajay.app"
+                />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">history</i>
+                  <label>Enable If-Modified-Since:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="enableIfModifiedSince" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">description</i>
+                  <label>Save description:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="writeDescription" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">terminal</i>
+                  <label>Add extra commands:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="addExtraCommands" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">content_cut</i>
+                  <label>Force keyframes on cuts:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="forceKeyframesOnCuts" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Media Processing</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">branding_watermark</i>
+                  <label>Include metadata:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="includeMetadata" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">image</i>
+                  <label>Include thumbnail:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="writeThumbnail" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">content_cut</i>
+                  <label>Crop thumbnail:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="cropThumbnail" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">album</i>
+                  <label>Use playlist name as album:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="usePlaylistNameAsAlbum" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Video & Subtitles</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">subtitles</i>
+                  <label>Include subtitles:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="includeSubtitles" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">save</i>
+                  <label>Save subtitles:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="saveSubtitles" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">closed_caption</i>
+                  <label>Save auto subtitles:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="saveAutoSubtitles" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">translate</i>
+                  <label>Subtitle language:</label>
+                </div>
+                <input type="text" id="subtitleLanguage" value="en" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">format_align_left</i>
+                  <label>Subtitle format:</label>
+                </div>
+                <select id="subtitleFormat">
+                  <option value="srt">SRT</option>
+                  <option value="vtt">VTT</option>
+                  <option value="ass">ASS/SSA</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">image</i>
+                  <label>Thumbnail format:</label>
+                </div>
+                <select id="thumbnailFormat">
+                  <option value="jpg">JPG</option>
+                  <option value="png">PNG</option>
+                  <option value="webp">WebP</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">view_list</i>
+                  <label>Chapters in videos:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="chaptersInVideo" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">Codecs & Formats</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">transform</i>
+                  <label>Recode video:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="recodingVideo" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">code</i>
+                  <label>Preferred video codec:</label>
+                </div>
+                <select id="preferredVideoCodec">
+                  <option value="H264 (avc1)">H264 (avc1)</option>
+                  <option value="H265 (hevc)">H265 (hevc)</option>
+                  <option value="VP9">VP9</option>
+                  <option value="AV1">AV1</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">code</i>
+                  <label>Preferred audio codec:</label>
+                </div>
+                <select id="preferredAudioCodec">
+                  <option value="aac">AAC</option>
+                  <option value="mp3">MP3</option>
+                  <option value="opus">Opus</option>
+                  <option value="vorbis">Vorbis</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">speed</i>
+                  <label>Preferred audio bitrate:</label>
+                </div>
+                <select id="preferredAudioBitrate">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">music_note</i>
+                  <label>Use custom audio quality:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="useCustomAudioQuality" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item" id="audioQualityContainer">
+                <div class="setting-label-group">
+                  <i class="material-icons">hdr_strong</i>
+                  <label>Audio quality (0-9):</label>
+                </div>
+                <div class="range-container">
+                  <input
+                    type="range"
+                    id="audioQuality"
+                    min="0"
+                    max="9"
+                    step="1"
+                  />
+                  <span class="range-value" id="val_audioQuality">5</span>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">edit</i>
+                  <label>Video format ID:</label>
+                </div>
+                <input
+                  type="text"
+                  id="videoFormatId"
+                  placeholder="e.g. 137+140"
+                />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">edit</i>
+                  <label>Audio format ID:</label>
+                </div>
+                <input type="text" id="audioFormatId" placeholder="e.g. 140" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">compress</i>
+                  <label>Prefer smaller formats:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="preferSmallFormats" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item vertical">
+                <div class="setting-label-group">
+                  <i class="material-icons">reorder</i>
+                  <label>Preferred format order [Audio]:</label>
+                </div>
+                <textarea id="audioFormatOrder"></textarea>
+              </div>
+              <div class="setting-item vertical">
+                <div class="setting-label-group">
+                  <i class="material-icons">reorder</i>
+                  <label>Preferred format order [Video]:</label>
+                </div>
+                <textarea id="videoFormatOrder"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- UPDATE TAB -->
+          <div id="update" class="tab-content">
+            <p class="tab-placeholder">Update settings coming soon...</p>
+          </div>
+
+          <!-- ADVANCED TAB -->
+          <div id="advanced" class="tab-content">
+            <div class="settings-group">
+              <h3 class="settings-group-title">YouTube Settings</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">code</i>
+                  <label>Player Client:</label>
+                </div>
+                <input
+                  type="text"
+                  id="ytPlayerClient"
+                  placeholder="default,mediaconnect"
+                />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">vpn_key</i>
+                  <label>PO Token [Web]:</label>
+                </div>
+                <input type="text" id="poToken" placeholder="Not defined" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">terminal</i>
+                  <label>Extra Extractor args:</label>
+                </div>
+                <input
+                  type="text"
+                  id="extraExtractorArgs"
+                  placeholder="Not defined"
+                />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">terminal</i>
+                  <label>Extra command for data search:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="extraCommandForDataSearch" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <h3 class="settings-group-title">yt-dlp Behavior</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">edit</i>
+                  <label>Disable Write Info Json:</label>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="disableWriteInfoJson" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">browser_updated</i>
+                  <label>User Agent:</label>
+                </div>
+                <input type="text" id="userAgent" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">link</i>
+                  <label>Referer:</label>
+                </div>
+                <input type="text" id="referer" />
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">title</i>
+                  <label>Filename Template:</label>
+                </div>
+                <input
+                  type="text"
+                  id="fileNameTemplate"
+                  placeholder="%(title)s"
+                />
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h3 class="settings-group-title">Backup & Restore</h3>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">file_download</i>
+                  <label>Export Settings:</label>
+                </div>
+                <button id="exportSettings" class="action-btn">Export JSON</button>
+              </div>
+              <div class="setting-item">
+                <div class="setting-label-group">
+                  <i class="material-icons">file_upload</i>
+                  <label>Import Settings:</label>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <button id="importSettingsBtn" class="action-btn">Import JSON</button>
+                  <input type="file" id="importFile" style="display: none;" accept=".json" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>

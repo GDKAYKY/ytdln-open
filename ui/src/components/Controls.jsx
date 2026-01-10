@@ -9,44 +9,91 @@ const Controls = ({ disabled, setStatus }) => {
 
   useEffect(() => {
     if (window.electronAPI) {
-        const removeProgress = window.electronAPI.onDownloadProgress((data) => {
-             const match = data.match(/(\d+\.?\d*)%/);
-             if (match) {
-                 const p = parseFloat(match[1]);
-                 setProgress(p);
-             }
+        // Escuta atualizações da fila (quando um download entra, sai ou muda de estado)
+        const offUpdate = window.electronAPI.onQueueUpdate((queue) => {
+          // Se houver algo sendo baixado, marcamos como isDownloading
+          const runningJob = queue.find(j => j.status === 'RUNNING');
+          if (runningJob) {
+            setIsDownloading(true);
+            setProgress(runningJob.progress || 0);
+          } else {
+            // Se não tem nada rodando e não tem nada pendente, resetamos
+            if (!queue.some(j => j.status === 'PENDING')) {
+              setIsDownloading(false);
+            }
+          }
         });
-        // Note: Generic event listeners might need cleanup if the API supports it, 
-        // but often in Electron preload they are just adding listeners.
-        // Assuming window.electronAPI.on... returns nothing or a cleanup fn?
-        // Checking renderer.js implies it just adds listener.
+
+        // Escuta o progresso detalhado do job ativo
+        const offProgress = window.electronAPI.onQueueProgress((data) => {
+          // Aqui data é { id, progress, speed, eta, size }
+          setProgress(data.progress);
+          // Opcionalmente podemos mostrar speed/eta em algum lugar
+        });
         
         window.electronAPI.onDownloadSuccess(() => {
-            setIsDownloading(false);
+            // Mantido para compatibilidade ou legados, mas a fila deve ser a fonte da verdade
             setProgress(100);
             setTimeout(() => {
                 setProgress(0);
                 setUrl('');
             }, 1000);
-            // Toast should handle success message usually
         });
         
         window.electronAPI.onDownloadError((msg) => {
              setIsDownloading(false);
              setProgress(0);
+             // setStatus(msg); // O ideal é passar o setStatus via prop ou context
         });
+
+        // Integração com a Extensão de Navegador
+        const offExternal = window.electronAPI.onExternalDownload((data) => {
+          if (data && data.url) {
+            console.log("Requisicão externa recebida:", data);
+            setUrl(data.url);
+            
+            setTimeout(() => {
+              // Agora usamos addToQueue diretamente se vier com settings
+              if (data.settings) {
+                window.electronAPI.addToQueue({ url: data.url, settings: data.settings });
+              } else {
+                document.getElementById('downloadBtn')?.click();
+              }
+            }, 100);
+          }
+        });
+
+        return () => {
+          if (typeof offUpdate === 'function') offUpdate();
+          if (typeof offProgress === 'function') offProgress();
+          if (typeof offExternal === 'function') offExternal();
+        };
     }
   }, []);
 
   const handleDownload = () => {
-    if (!url.trim()) {
+    let cleanUrl = url.trim();
+
+    // Remove prefixo blob: se existir (comum em cliques acidentais no player)
+    if (cleanUrl.startsWith('blob:')) {
+      // Tenta extrair a parte interna se for blob:https://...
+      const internalMatch = cleanUrl.match(/blob:(https?:\/\/.+)/);
+      if (internalMatch) {
+         cleanUrl = internalMatch[1];
+      } else {
+         setStatus("ERROR: Blob URLs are not supported directly. Please use the page URL.");
+         return;
+      }
+    }
+
+    if (!cleanUrl) {
         setStatus("ERROR: Please enter a valid URL.");
         return;
     }
     
     // Basic validation
     try {
-        const u = new URL(url);
+        const u = new URL(cleanUrl);
         if (!['http:', 'https:'].includes(u.protocol)) throw new Error();
     } catch {
         setStatus("ERROR: Invalid URL. Use http:// or https://");
@@ -54,8 +101,9 @@ const Controls = ({ disabled, setStatus }) => {
     }
 
     setIsDownloading(true);
-    // setStatus('Iniciando download...'); // Handled by App listening to same events
-    window.electronAPI.downloadVideoWithSettings(url, settings);
+    // Para manter o input atualizado com a URL limpa
+    setUrl(cleanUrl);
+    window.electronAPI.addToQueue({ url: cleanUrl, settings });
   };
 
   const radius = 22;
