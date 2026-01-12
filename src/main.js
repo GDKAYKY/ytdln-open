@@ -17,7 +17,15 @@ const BinaryDownloader = require("./bin-downloader");
 const VideoDownloader = require("./video-downloader");
 const libraryManager = require("./main/library-manager");
 const StreamDownloadAPI = require("./stream-download-api");
+
+// ✨ Nova API REST v2.0
+const DownloadQueue = require("./api/services/download-queue");
+const SSEManager = require("./api/services/sse-manager");
+const DownloadService = require("./api/services/download.service");
+const DownloadController = require("./api/controllers/download.controller");
+const { createDownloadRouter } = require("./api/routes/download.routes");
 // FIM
+
 const fs = require("node:fs");
 const fsPromises = require("node:fs/promises");
 const crypto = require("node:crypto");
@@ -50,7 +58,7 @@ function isValidUrl(url) {
     const urlObj = new URL(url);
     return ["http:", "https:"].includes(urlObj.protocol);
   } catch {
-    throw new Error("URL inválida");
+    return false;
   }
 }
 
@@ -106,6 +114,13 @@ function findSystemBinary(binaryName) {
 let videoDownloader = null;
 let binaryPaths = null;
 let streamDownloadAPI = null;
+
+// ✨ Nova API REST v2.0
+let downloadQueue = null;
+let sseManager = null;
+let downloadService = null;
+let restAPIServer = null;
+// FIM
 
 // INICIO
 async function initializeBinaries() {
@@ -215,7 +230,7 @@ createIpcHandler(
 );
 // FIM
 
-ipcMain.on("download-video", async (event, videoUrl) => {
+createIpcHandler("download-video", async (event, videoUrl) => {
   const defaultSettings = {
     outputFormat: "mp4",
     quality: "best",
@@ -234,12 +249,32 @@ ipcMain.on("download-video", async (event, videoUrl) => {
     ignoreErrors: true,
     audioFormat: "best",
   };
-  ipcMain.emit(
-    "download-video-with-settings",
-    event,
-    videoUrl,
-    defaultSettings
-  );
+  
+  // Chamar diretamente o handler de download-video-with-settings
+  if (!validateVideoUrlOrNotify(event, videoUrl)) return;
+
+  try {
+    const { detectedPath, duration } = await videoDownloader.download(
+      videoUrl,
+      defaultSettings,
+      {
+        onProgress: (msg) => event.sender.send("download-progress", msg),
+        onError: (msg) => event.sender.send("download-error", msg),
+      }
+    );
+
+    console.log("Download completed successfully.");
+    await libraryManager.trackDownloadedFile(
+      videoUrl,
+      detectedPath,
+      defaultSettings,
+      duration
+    );
+    event.sender.send("download-success");
+  } catch (err) {
+    console.error("Download failed:", err);
+    event.sender.send("download-error", err.message);
+  }
 });
 
 ipcMain.on("check-binaries-status", (event) => {
@@ -424,10 +459,56 @@ function createWindow() {
       console.log("Initializing binaries...");
       await initializeBinaries();
 
-      // Inicializar API de Stream
-      console.log("Initializing Stream Download API...");
+      // Inicializar API de Stream (versão 1.0 - mantida para compatibilidade)
+      console.log("Initializing Stream Download API v1.0...");
       streamDownloadAPI = new StreamDownloadAPI(videoDownloader, 9000);
       await streamDownloadAPI.start();
+
+      // Inicializar nova API REST v2.0
+      console.log("Initializing REST API v2.0...");
+      downloadQueue = new DownloadQueue(2); // Max 2 downloads simultâneos
+      sseManager = new SSEManager();
+      downloadService = new DownloadService(
+        videoDownloader,
+        downloadQueue,
+        sseManager
+      );
+      const downloadController = new DownloadController(downloadService);
+
+      // Criar aplicação Express separada para a nova API
+      const express = require("express");
+      const apiApp = express();
+
+      // Middleware
+      apiApp.use(express.json());
+      apiApp.use((req, res, next) => {
+        res.header("Access-Control-Allow-Origin", "*");
+        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.header("Access-Control-Allow-Headers", "Content-Type");
+        if (req.method === "OPTIONS") {
+          return res.sendStatus(200);
+        }
+        next();
+      });
+
+      // Health check
+      apiApp.get("/health", (req, res) => {
+        res.json({
+          status: "ok",
+          version: "2.0.0",
+          timestamp: new Date().toISOString(),
+          queue: downloadQueue.getStats(),
+        });
+      });
+
+      // Rotas da API
+      const downloadRouter = createDownloadRouter(downloadController);
+      apiApp.use("/api", downloadRouter);
+
+      // Iniciar servidor da nova API
+      restAPIServer = apiApp.listen(9001, "localhost", () => {
+        console.log("✓ REST API v2.0 running on http://localhost:9001");
+      });
 
       // Notify renderer that app is ready using existing channel
       if (mainWindow && !mainWindow.isDestroyed()) {

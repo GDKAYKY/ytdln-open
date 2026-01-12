@@ -34,17 +34,19 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// Função para baixar com formato específico
+// Função para baixar com formato específico (usando API v2.0)
 async function downloadWithFormat(url, format) {
   try {
-    const response = await fetch('http://localhost:9000/api/download', {
+    // Usar API v2.0 na porta 9001
+    const response = await fetch('http://localhost:9001/api/download', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         url,
-        format,
+        format: format === 'audio' ? 'audio' : format,
+        audioOnly: format === 'audio',
         subtitles: false,
         source: 'browser-extension-context'
       })
@@ -52,24 +54,17 @@ async function downloadWithFormat(url, format) {
 
     if (!response.ok) {
       const error = await response.json();
-      showNotification('Erro', error.message || 'Erro ao iniciar download');
-      return
+      showNotification('Erro', error.error || error.message || 'Erro ao iniciar download');
+      return;
     }
 
     const data = await response.json();
 
-    if (data.success) {
-      // Signal the browser to start the download
-      chrome.downloads.download({
-        url: `http://localhost:9000/api/download?downloadId=${data.downloadId}`,
-        filename: `${data.title}.${format === 'audio' ? 'mp3' : format}`
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          showNotification('Erro', chrome.runtime.lastError.message);
-        } else {
-          showNotification('Sucesso', `Download iniciado! ID: ${downloadId}`);
-        }
-      });
+    if (data.taskId) {
+      showNotification('Sucesso', `Download iniciado! Task ID: ${data.taskId}`);
+      
+      // Opcional: Abrir popup para mostrar progresso
+      chrome.action.openPopup?.();
     } else {
       showNotification('Erro', data.message || 'Erro ao iniciar download');
     }
@@ -79,35 +74,28 @@ async function downloadWithFormat(url, format) {
   }
 }
 
-// Função para obter informações do vídeo
+// Função para obter informações do vídeo (usando API v2.0)
 async function getVideoInfo(url, tabId) {
   try {
-    const response = await fetch('http://localhost:9000/api/video-info', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    // Nota: A API v2.0 não tem endpoint de video-info ainda
+    // Por enquanto, apenas copiar URL
+    const info = `URL: ${url}`;
+
+    // Usar chrome.scripting.executeScript para copiar no contexto da página
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: (text) => {
+        navigator.clipboard.writeText(text).then(() => {
+          console.log('URL copiada para clipboard');
+        });
       },
-      body: JSON.stringify({ url })
+      args: [info]
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      
-      // Copiar informações para clipboard
-      const info = `
-Título: ${data.title}
-Autor: ${data.uploader}
-Duração: ${data.duration}
-URL: ${url}
-`.trim();
-
-      navigator.clipboard.writeText(info).then(() => {
-        showNotification('Sucesso', 'Informações copiadas para a área de transferência');
-      });
-    }
+    showNotification('Sucesso', 'URL copiada para a área de transferência');
   } catch (error) {
-    console.error('Erro ao obter informações:', error);
-    showNotification('Erro', 'Não foi possível obter informações do vídeo');
+    console.error('Erro ao copiar informações:', error);
+    showNotification('Erro', 'Não foi possível copiar informações');
   }
 }
 
@@ -130,9 +118,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Health check periódico
+// Health check periódico (API v2.0)
 setInterval(() => {
-  fetch('http://localhost:9000/health').catch(() => {
+  fetch('http://localhost:9001/health').catch(() => {
     console.log('YTDLN servidor offline');
   });
 }, 30000);

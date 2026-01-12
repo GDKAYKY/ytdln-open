@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YTDLN - Download Manager</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 600px;
+      width: 100%;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus,
+    input[type="url"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .checkbox-group {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+    }
+
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0;
+      font-weight: 400;
+    }
+
+    input[type="checkbox"] {
+      margin-right: 8px;
+      cursor: pointer;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-size: 14px;
+    }
+
+    #downloadBtn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    #downloadBtn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    #downloadBtn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #cancelBtn {
+      background: #ff6b6b;
+      color: white;
+    }
+
+    #cancelBtn:hover:not(:disabled) {
+      background: #ff5252;
+      transform: translateY(-2px);
+    }
+
+    #cancelBtn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .progress-container {
+      display: none;
+      margin-top: 30px;
+    }
+
+    .progress-container.visible {
+      display: block;
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      color: #666;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-message {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status-message.visible {
+      display: block;
+    }
+
+    .status-message.info {
+      background: #e3f2fd;
+      color: #1976d2;
+      border-left: 4px solid #1976d2;
+    }
+
+    .status-message.success {
+      background: #e8f5e9;
+      color: #388e3c;
+      border-left: 4px solid #388e3c;
+    }
+
+    .status-message.error {
+      background: #ffebee;
+      color: #d32f2f;
+      border-left: 4px solid #d32f2f;
+    }
+
+    .downloads-list {
+      margin-top: 40px;
+      padding-top: 40px;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    .downloads-list h2 {
+      color: #333;
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+
+    .download-item {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      border-left: 4px solid #667eea;
+    }
+
+    .download-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+
+    .download-item-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 3px;
+      background: #667eea;
+      color: white;
+    }
+
+    .download-item-url {
+      color: #666;
+      font-size: 12px;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+
+    .download-item-progress {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .server-status {
+      margin-bottom: 20px;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .server-status.connected {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .server-status.disconnected {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .server-status.connected .status-dot {
+      background: #2e7d32;
+    }
+
+    .server-status.disconnected .status-dot {
+      background: #c62828;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📥 YTDLN Download Manager</h1>
+    <p class="subtitle">Faça download de vídeos com gerenciamento de progresso em tempo real</p>
+
+    <!-- Server Status -->
+    <div class="server-status disconnected" id="serverStatus">
+      <span class="status-dot"></span>
+      <span>Conectando ao servidor...</span>
+    </div>
+
+    <!-- Form -->
+    <form id="downloadForm">
+      <div class="form-group">
+        <label for="videoUrl">URL do Vídeo *</label>
+        <input 
+          type="url" 
+          id="videoUrl" 
+          placeholder="https://www.youtube.com/watch?v=..." 
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="format">Formato</label>
+        <select id="format">
+          <option value="best">Melhor qualidade</option>
+          <option value="1080p">1080p</option>
+          <option value="720p">720p</option>
+          <option value="480p">480p</option>
+          <option value="360p">360p</option>
+          <option value="audio">Apenas áudio (MP3)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Opções</label>
+        <div class="checkbox-group">
+          <label>
+            <input type="checkbox" id="audioOnly">
+            Apenas áudio
+          </label>
+          <label>
+            <input type="checkbox" id="subtitles">
+            Legendas
+          </label>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button type="submit" id="downloadBtn">⬇️ Iniciar Download</button>
+        <button type="button" id="cancelBtn" disabled>❌ Cancelar</button>
+      </div>
+    </form>
+
+    <!-- Progress -->
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar-bg">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="progress-text" id="progressText">Iniciando...</div>
+    </div>
+
+    <!-- Status Message -->
+    <div class="status-message" id="statusMessage"></div>
+
+    <!-- Downloads List -->
+    <div class="downloads-list">
+      <h2>📋 Downloads</h2>
+      <div id="downloadsList">
+        <p style="color: #999; font-size: 13px;">Nenhum download ainda</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/download-client.js"></script>
+  <script>
+    const client = new DownloadClient();
+    const form = document.getElementById('downloadForm');
+    const urlInput = document.getElementById('videoUrl');
+    const formatSelect = document.getElementById('format');
+    const audioOnlyCheckbox = document.getElementById('audioOnly');
+    const subtitlesCheckbox = document.getElementById('subtitles');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const statusMessage = document.getElementById('statusMessage');
+    const serverStatus = document.getElementById('serverStatus');
+    const downloadsList = document.getElementById('downloadsList');
+
+    let currentTaskId = null;
+    let allDownloads = [];
+
+    // Verificar conexão ao carregar
+    async function checkServerConnection() {
+      const health = await client.checkHealth();
+      if (health.connected) {
+        serverStatus.classList.remove('disconnected');
+        serverStatus.classList.add('connected');
+        serverStatus.innerHTML = '<span class="status-dot"></span> <span>Conectado ao YTDLN</span>';
+        downloadBtn.disabled = false;
+      } else {
+        serverStatus.classList.remove('connected');
+        serverStatus.classList.add('disconnected');
+        serverStatus.innerHTML = '<span class="status-dot"></span> <span>Desconectado - Execute YTDLN Desktop</span>';
+        downloadBtn.disabled = true;
+      }
+    }
+
+    // Verificar conexão a cada 5 segundos
+    setInterval(checkServerConnection, 5000);
+    checkServerConnection();
+
+    // Submit form
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const url = urlInput.value.trim();
+      if (!url) {
+        showStatus('Por favor, insira uma URL', 'error');
+        return;
+      }
+
+      try {
+        downloadBtn.disabled = true;
+        showStatus('Iniciando download...', 'info');
+        progressContainer.classList.add('visible');
+
+        const result = await client.createDownload(url, {
+          format: formatSelect.value,
+          audioOnly: audioOnlyCheckbox.checked,
+          subtitles: subtitlesCheckbox.checked
+        });
+
+        currentTaskId = result.taskId;
+        cancelBtn.disabled = false;
+
+        // Monitorar com SSE
+        client.startMonitoringSSE(result.taskId, {
+          onProgress: (progress) => {
+            progressBar.style.width = progress.progress + '%';
+            progressText.textContent = 
+              `${progress.progress}% | ${progress.speed || ''} | ETA: ${progress.eta || 'calculando...'}`;
+            updateDownloadsList();
+          },
+          onComplete: (final) => {
+            progressBar.style.width = '100%';
+            progressText.textContent = '✅ Download completo!';
+            showStatus('Download finalizado com sucesso!', 'success');
+            downloadBtn.disabled = false;
+            cancelBtn.disabled = true;
+            urlInput.value = '';
+            setTimeout(() => {
+              progressContainer.classList.remove('visible');
+            }, 3000);
+          },
+          onError: (error) => {
+            showStatus(`❌ Erro: ${error.error}`, 'error');
+            downloadBtn.disabled = false;
+            cancelBtn.disabled = true;
+          }
+        });
+
+      } catch (error) {
+        showStatus(`Erro: ${error.message}`, 'error');
+        downloadBtn.disabled = false;
+      }
+    });
+
+    // Cancelar download
+    cancelBtn.addEventListener('click', async () => {
+      if (!currentTaskId) return;
+      try {
+        await client.cancelDownload(currentTaskId);
+        showStatus('Download cancelado', 'info');
+        progressContainer.classList.remove('visible');
+        cancelBtn.disabled = true;
+        downloadBtn.disabled = false;
+        updateDownloadsList();
+      } catch (error) {
+        showStatus(`Erro ao cancelar: ${error.message}`, 'error');
+      }
+    });
+
+    // Funções auxiliares
+    function showStatus(message, type = 'info') {
+      statusMessage.textContent = message;
+      statusMessage.className = `status-message visible ${type}`;
+      if (type === 'success' || type === 'error') {
+        setTimeout(() => {
+          statusMessage.classList.remove('visible');
+        }, 5000);
+      }
+    }
+
+    async function updateDownloadsList() {
+      try {
+        const result = await client.getAllDownloads();
+        allDownloads = result.downloads || [];
+
+        if (allDownloads.length === 0) {
+          downloadsList.innerHTML = '<p style="color: #999; font-size: 13px;">Nenhum download</p>';
+          return;
+        }
+
+        downloadsList.innerHTML = allDownloads.map(d => `
+          <div class="download-item">
+            <div class="download-item-header">
+              <div>
+                <div class="download-item-url">${d.url.substring(0, 60)}...</div>
+              </div>
+              <span class="download-item-status">${d.status.toUpperCase()}</span>
+            </div>
+            <div class="download-item-progress">
+              ${d.progress}% | ${d.speed || ''} | ETA: ${d.eta || '---'}
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Erro ao atualizar lista:', error);
+      }
+    }
+
+    // Atualizar lista a cada 2 segundos
+    setInterval(updateDownloadsList, 2000);
+    updateDownloadsList();
+  </script>
+</body>
+</html>

@@ -1,5 +1,8 @@
 // Estado
 let serverConnected = false;
+let downloadClient = null;
+let currentDownloadId = null;
+let sseConnection = null;
 
 // Elementos do DOM
 const urlInput = document.getElementById('url');
@@ -12,16 +15,77 @@ const progressText = document.getElementById('progressText');
 const serverStatusDiv = document.getElementById('serverStatus');
 const form = document.getElementById('downloadForm');
 
-// Verificar conexão com servidor
+// Inicializar cliente da API v2.0
+function initializeDownloadClient() {
+  // Criar client apontando para porta 9001 (nova API v2.0)
+  downloadClient = {
+    apiUrl: 'http://localhost:9001/api',
+    
+    async createDownload(url, options = {}) {
+      const response = await fetch(`${this.apiUrl}/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, ...options })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+
+    startMonitoringSSE(taskId, onProgress, onComplete, onError) {
+      const eventSource = new EventSource(`${this.apiUrl}/download/${taskId}/sse`);
+      
+      eventSource.addEventListener('progress', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          onProgress?.(data);
+        } catch (err) {
+          console.error('Erro parseando progresso:', err);
+        }
+      });
+
+      eventSource.addEventListener('complete', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          eventSource.close();
+          onComplete?.(data);
+        } catch (err) {
+          console.error('Erro parseando conclusão:', err);
+        }
+      });
+
+      eventSource.addEventListener('error', (e) => {
+        console.error('SSE erro:', e);
+        eventSource.close();
+        onError?.({ message: 'Conexão SSE perdida' });
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+      };
+
+      return eventSource;
+    },
+
+    async cancelDownload(taskId) {
+      const response = await fetch(`${this.apiUrl}/download/${taskId}/cancel`, {
+        method: 'POST'
+      });
+      return response.json();
+    }
+  };
+}
+
+// Verificar conexão com servidor (nova API v2.0)
 async function checkServerConnection() {
   try {
-    const response = await fetch('http://localhost:9000/health', {
+    const response = await fetch('http://localhost:9001/health', {
       method: 'GET',
       timeout: 5000
     });
     
     if (response.ok) {
-      serverConnected = true;
+      const data = await response.json();
+      serverConnected = data.status === 'ok';
       updateServerStatus(true);
       return true;
     }
@@ -75,6 +139,9 @@ async function getCurrentTabUrl() {
 
 // Carregar URL da aba quando abrir
 document.addEventListener('DOMContentLoaded', async () => {
+  // Inicializar cliente
+  initializeDownloadClient();
+  
   const tabUrl = await getCurrentTabUrl();
   if (tabUrl) {
     urlInput.value = tabUrl;
@@ -87,7 +154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(checkServerConnection, 5000);
 });
 
-// Enviar para download
+// Enviar para download usando nova API v2.0
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   
@@ -110,91 +177,55 @@ form.addEventListener('submit', async (e) => {
   showProgress(true);
   
   try {
-    const response = await fetch('http://localhost:9000/api/download', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url,
-        format,
-        subtitles,
-        source: 'browser-extension'
-      })
+    // Criar download usando novo cliente
+    const result = await downloadClient.createDownload(url, {
+      format,
+      subtitles,
+      source: 'browser-extension'
     });
     
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Erro ao iniciar download');
+    currentDownloadId = result.taskId;
+    showStatus('✅ Download iniciado!', 'success');
+    urlInput.value = '';
+    document.getElementById('subtitles').checked = false;
+    
+    // Monitorar progresso com SSE (novo método)
+    if (sseConnection) {
+      sseConnection.close();
     }
     
-    const data = await response.json();
-    
-    if (data.success) {
-      showStatus('✅ Download iniciado! Verifique a pasta de downloads.', 'success');
-      urlInput.value = '';
-      document.getElementById('subtitles').checked = false;
-      
-      // Monitorar progresso do download
-      monitorDownloadProgress(data.downloadId);
-    } else {
-      showStatus(data.message || 'Erro ao iniciar download', 'error');
-    }
+    sseConnection = downloadClient.startMonitoringSSE(
+      currentDownloadId,
+      (progress) => {
+        const percent = Math.min(100, progress.percent || 0);
+        progressFill.style.width = percent + '%';
+        
+        let msg = `${percent}%`;
+        if (progress.speed) msg += ` - ${progress.speed}`;
+        if (progress.eta) msg += ` - ETA: ${progress.eta}`;
+        if (progress.total) msg += ` (${progress.total})`;
+        
+        progressText.textContent = msg;
+      },
+      (result) => {
+        progressFill.style.width = '100%';
+        progressText.textContent = '✅ Concluído!';
+        setTimeout(() => {
+          showProgress(false);
+        }, 2000);
+      },
+      (error) => {
+        showStatus(`❌ Erro: ${error.message}`, 'error');
+        showProgress(false);
+      }
+    );
   } catch (error) {
     console.error('Erro:', error);
     showStatus(`Erro: ${error.message}`, 'error');
   } finally {
     downloadBtn.disabled = false;
-    showProgress(false);
   }
 });
-
-// Monitorar progresso do download
-async function monitorDownloadProgress(downloadId) {
-  const checkProgress = async () => {
-    try {
-      const response = await fetch(`http://localhost:9000/api/download/${downloadId}/progress`);
-      
-      if (!response.ok) return;
-      
-      const data = await response.json();
-      
-      if (data.status === 'downloading') {
-        const percent = Math.min(100, data.progress || 0);
-        progressFill.style.width = percent + '%';
-        
-        // Montar mensagem de progresso com informações adicionais
-        let progressMessage = `${percent}%`;
-        if (data.speed) {
-          progressMessage += ` - ${data.speed}`;
-        }
-        if (data.eta) {
-          progressMessage += ` - ETA: ${data.eta}`;
-        } else {
-          progressMessage += ` - Calculando tempo restante...`;
-        }
-        if (data.total) {
-          progressMessage += ` (${data.total})`;
-        }
-        
-        progressText.textContent = progressMessage;
-        
-        setTimeout(checkProgress, 1000);
-      } else if (data.status === 'completed') {
-        progressFill.style.width = '100%';
-        progressText.textContent = '100% - Concluído!';
-      } else if (data.status === 'error') {
-        showStatus(`Erro no download: ${data.error}`, 'error');
-      }
-    } catch (error) {
-      // Falha ao obter progresso, continuar tentando
-      setTimeout(checkProgress, 2000);
-    }
-  };
-  
-  checkProgress();
-}
-
 // Abrir configurações
 settingsBtn.addEventListener('click', () => {
   chrome.runtime.openOptionsPage?.() || chrome.tabs.create({
