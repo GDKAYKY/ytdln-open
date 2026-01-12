@@ -2,6 +2,7 @@ const { app } = require("electron");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const BinaryDownloader = require("./bin-downloader");
+const ProgressParser = require("./progress-parser");
 
 class VideoDownloader {
   /**
@@ -142,10 +143,23 @@ class VideoDownloader {
       });
 
       let detectedPath = null;
+      const progressParser = new ProgressParser();
 
       process.stdout.on("data", (data) => {
         const str = data.toString();
-        if (callbacks.onProgress) callbacks.onProgress(str);
+        
+        // Chamar o callback original com a string
+        if (callbacks.onProgress) {
+          // Tentar parsear o progresso
+          const progress = progressParser.processLine(str);
+          
+          // Chamar com dados parseados se disponível, caso contrário com string
+          if (progress) {
+            callbacks.onProgress(progress);
+          } else {
+            callbacks.onProgress(str);
+          }
+        }
 
         const destMatch = str.match(/\[download\] Destination: (.+)/);
         if (destMatch) detectedPath = destMatch[1].trim();

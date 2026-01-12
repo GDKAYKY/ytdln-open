@@ -162,7 +162,22 @@ async function monitorDownloadProgress(downloadId) {
       if (data.status === 'downloading') {
         const percent = Math.min(100, data.progress || 0);
         progressFill.style.width = percent + '%';
-        progressText.textContent = `${percent}% - ${data.eta || 'Calculando tempo restante...'}`;
+        
+        // Montar mensagem de progresso com informações adicionais
+        let progressMessage = `${percent}%`;
+        if (data.speed) {
+          progressMessage += ` - ${data.speed}`;
+        }
+        if (data.eta) {
+          progressMessage += ` - ETA: ${data.eta}`;
+        } else {
+          progressMessage += ` - Calculando tempo restante...`;
+        }
+        if (data.total) {
+          progressMessage += ` (${data.total})`;
+        }
+        
+        progressText.textContent = progressMessage;
         
         setTimeout(checkProgress, 1000);
       } else if (data.status === 'completed') {

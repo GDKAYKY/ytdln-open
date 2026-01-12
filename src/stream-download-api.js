@@ -281,11 +281,17 @@ class StreamDownloadAPI extends EventEmitter {
         settings,
         {
           onProgress: (progressInfo) => {
-            downloadData.progress = progressInfo.percent || 0;
-            downloadData.eta = progressInfo.eta;
-            downloadData.speed = progressInfo.speed;
-            downloadData.downloaded = progressInfo.downloaded;
-            downloadData.total = progressInfo.total;
+            // Se progressInfo for um objeto parseado (com percent, eta, speed)
+            if (progressInfo && typeof progressInfo === 'object' && progressInfo.percent !== undefined) {
+              downloadData.progress = Math.min(100, progressInfo.percent || 0);
+              downloadData.eta = progressInfo.eta || null;
+              downloadData.speed = progressInfo.speed || null;
+              downloadData.total = progressInfo.total || null;
+            }
+            // Se for uma string, apenas registrar no console (compatibilidade com outros casos)
+            else if (typeof progressInfo === 'string') {
+              console.log(`[ytdlp] ${progressInfo}`);
+            }
           },
           onError: (error) => {
             downloadData.status = 'error';
