@@ -16,6 +16,7 @@ const BinaryDownloader = require("./bin-downloader");
 // INICIO
 const VideoDownloader = require("./video-downloader");
 const libraryManager = require("./main/library-manager");
+const StreamDownloadAPI = require("./stream-download-api");
 // FIM
 const fs = require("node:fs");
 const fsPromises = require("node:fs/promises");
@@ -104,6 +105,7 @@ function findSystemBinary(binaryName) {
 // binaryDownloader removed as it was unused and uninitialized
 let videoDownloader = null;
 let binaryPaths = null;
+let streamDownloadAPI = null;
 
 // INICIO
 async function initializeBinaries() {
@@ -421,6 +423,11 @@ function createWindow() {
     try {
       console.log("Initializing binaries...");
       await initializeBinaries();
+
+      // Inicializar API de Stream
+      console.log("Initializing Stream Download API...");
+      streamDownloadAPI = new StreamDownloadAPI(videoDownloader, 9000);
+      await streamDownloadAPI.start();
 
       // Notify renderer that app is ready using existing channel
       if (mainWindow && !mainWindow.isDestroyed()) {

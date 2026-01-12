@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YTDLN - Configurações</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .settings-section {
+      margin-bottom: 30px;
+    }
+
+    .settings-section h2 {
+      font-size: 18px;
+      color: #333;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #667eea;
+    }
+
+    .setting-item {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f8f9ff;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+
+    .setting-item label {
+      display: block;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .setting-item input[type="text"],
+    .setting-item input[type="number"],
+    .setting-item select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .setting-item input:focus,
+    .setting-item select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .help-text {
+      font-size: 13px;
+      color: #666;
+      margin-top: 6px;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    .checkbox-item label {
+      margin: 0;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-save {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-save:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-reset {
+      background: white;
+      color: #667eea;
+      border: 2px solid #667eea;
+    }
+
+    .btn-reset:hover {
+      background: #f8f9ff;
+    }
+
+    .info-box {
+      background: #e3f2fd;
+      border: 1px solid #1976d2;
+      border-radius: 6px;
+      padding: 12px 15px;
+      margin: 20px 0;
+      color: #1976d2;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .status-message {
+      padding: 12px 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+      display: none;
+      font-size: 14px;
+    }
+
+    .status-message.show {
+      display: block;
+    }
+
+    .status-message.success {
+      background: #e8f5e9;
+      color: #388e3c;
+      border: 1px solid #388e3c;
+    }
+
+    .status-message.error {
+      background: #ffebee;
+      color: #d32f2f;
+      border: 1px solid #d32f2f;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎥 YTDLN Browser Extension</h1>
+      <p>Configurações</p>
+    </div>
+
+    <div class="content">
+      <form id="settingsForm">
+        <!-- Seção de Servidor -->
+        <div class="settings-section">
+          <h2>🔗 Configuração do Servidor</h2>
+          
+          <div class="setting-item">
+            <label for="serverUrl">URL do Servidor:</label>
+            <input type="text" id="serverUrl" placeholder="http://localhost:9000">
+            <div class="help-text">Endereço do servidor YTDLN. Padrão: http://localhost:9000</div>
+          </div>
+
+          <div class="setting-item">
+            <div class="checkbox-item">
+              <input type="checkbox" id="autoConnect">
+              <label for="autoConnect">Conectar automaticamente ao iniciar</label>
+            </div>
+            <div class="help-text">Tenta conectar ao servidor quando a extensão é carregada</div>
+          </div>
+        </div>
+
+        <!-- Seção de Downloads -->
+        <div class="settings-section">
+          <h2>⬇️ Configuração de Downloads</h2>
+          
+          <div class="setting-item">
+            <label for="defaultFormat">Formato padrão:</label>
+            <select id="defaultFormat">
+              <option value="best">Melhor Qualidade</option>
+              <option value="video">Apenas Vídeo (MP4)</option>
+              <option value="audio">Apenas Áudio (MP3)</option>
+              <option value="1080p">1080p (se disponível)</option>
+              <option value="720p">720p (se disponível)</option>
+            </select>
+            <div class="help-text">Formato padrão para novos downloads</div>
+          </div>
+
+          <div class="setting-item">
+            <div class="checkbox-item">
+              <input type="checkbox" id="autoDownloadSubs">
+              <label for="autoDownloadSubs">Baixar legendas automaticamente</label>
+            </div>
+            <div class="help-text">Se disponível, legendas serão incluídas no download</div>
+          </div>
+
+          <div class="setting-item">
+            <label for="maxConcurrent">Downloads simultâneos:</label>
+            <input type="number" id="maxConcurrent" min="1" max="10" value="2">
+            <div class="help-text">Número máximo de downloads acontecendo ao mesmo tempo</div>
+          </div>
+        </div>
+
+        <!-- Seção de Interface -->
+        <div class="settings-section">
+          <h2>🎨 Interface</h2>
+          
+          <div class="setting-item">
+            <div class="checkbox-item">
+              <input type="checkbox" id="floatingButton" checked>
+              <label for="floatingButton">Mostrar botão flutuante nas páginas de vídeo</label>
+            </div>
+            <div class="help-text">Exibe um botão de download rápido em sites de vídeo</div>
+          </div>
+
+          <div class="setting-item">
+            <div class="checkbox-item">
+              <input type="checkbox" id="contextMenu" checked>
+              <label for="contextMenu">Mostrar opções no menu de contexto</label>
+            </div>
+            <div class="help-text">Clique direito para acessar opções rápidas de download</div>
+          </div>
+
+          <div class="setting-item">
+            <div class="checkbox-item">
+              <input type="checkbox" id="notifications" checked>
+              <label for="notifications">Mostrar notificações</label>
+            </div>
+            <div class="help-text">Notificações de download iniciado/concluído</div>
+          </div>
+        </div>
+
+        <!-- Seção de Avançado -->
+        <div class="settings-section">
+          <h2>⚙️ Avançado</h2>
+          
+          <div class="setting-item">
+            <label for="timeout">Timeout de requisição (segundos):</label>
+            <input type="number" id="timeout" min="5" max="120" value="30">
+            <div class="help-text">Tempo máximo para aguardar resposta do servidor</div>
+          </div>
+
+          <div class="setting-item">
+            <label for="retryAttempts">Tentativas de conexão:</label>
+            <input type="number" id="retryAttempts" min="1" max="10" value="3">
+            <div class="help-text">Número de tentativas para conectar ao servidor</div>
+          </div>
+
+          <div class="info-box">
+            <strong>💡 Dica:</strong> Para usar a extensão, certifique-se de que o aplicativo YTDLN Desktop está em execução e acessível no endereço configurado acima.
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button type="submit" class="btn-save">💾 Salvar</button>
+          <button type="reset" class="btn-reset">↻ Restaurar Padrões</button>
+        </div>
+
+        <div id="statusMessage" class="status-message"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

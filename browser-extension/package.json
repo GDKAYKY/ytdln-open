@@ -1,0 +1,23 @@
+{
+  "name": "ytdln-browser-extension",
+  "version": "1.0.0",
+  "description": "Browser extension for YTDLN - Download videos with stream",
+  "manifest_version": 3,
+  "scripts": {
+    "dev": "echo 'Load in chrome://extensions with developer mode enabled'",
+    "package": "cd .. && npm run make",
+    "build": "echo 'Extension is already built - no compilation needed'",
+    "test": "echo 'Run manual tests using chrome://extensions'"
+  },
+  "keywords": [
+    "ytdln",
+    "video-download",
+    "youtube",
+    "vimeo",
+    "browser-extension",
+    "stream-download"
+  ],
+  "author": "YTDLN-OPEN",
+  "license": "ISC",
+  "devDependencies": {}
+}

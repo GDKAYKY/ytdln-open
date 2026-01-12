@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YTDLN - Download</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 450px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+
+    .container {
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      color: white;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: #222;
+      font-size: 14px;
+    }
+
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      margin: 0;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-download {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-download:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-download:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-settings {
+      background: white;
+      color: #667eea;
+      border: 2px solid #667eea;
+    }
+
+    .btn-settings:hover {
+      background: #f8f9ff;
+    }
+
+    .status {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.info {
+      background: #e3f2fd;
+      color: #1976d2;
+      border: 1px solid #1976d2;
+    }
+
+    .status.success {
+      background: #e8f5e9;
+      color: #388e3c;
+      border: 1px solid #388e3c;
+    }
+
+    .status.error {
+      background: #ffebee;
+      color: #d32f2f;
+      border: 1px solid #d32f2f;
+    }
+
+    .progress {
+      margin-top: 15px;
+      display: none;
+    }
+
+    .progress.show {
+      display: block;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      font-size: 12px;
+      margin-top: 6px;
+      color: #666;
+    }
+
+    .server-status {
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 15px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .server-status.connected {
+      background: #e8f5e9;
+      color: #388e3c;
+      border: 1px solid #388e3c;
+    }
+
+    .server-status.disconnected {
+      background: #ffebee;
+      color: #d32f2f;
+      border: 1px solid #d32f2f;
+    }
+
+    .format-options {
+      background: rgba(255, 255, 255, 0.9);
+      padding: 12px;
+      border-radius: 6px;
+    }
+
+    .format-options h3 {
+      font-size: 13px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎥 YTDLN</h1>
+      <p>Download com Stream</p>
+    </div>
+
+    <div class="server-status disconnected" id="serverStatus">
+      ⚫ Desconectado do servidor
+    </div>
+
+    <form id="downloadForm">
+      <div class="form-group">
+        <label for="url">URL do Vídeo:</label>
+        <input type="text" id="url" placeholder="Cole a URL do vídeo aqui..." required>
+      </div>
+
+      <div class="format-options">
+        <h3>Formato</h3>
+        <div class="checkbox-group">
+          <input type="radio" name="format" id="formatBest" value="best" checked>
+          <label for="formatBest">Melhor Qualidade</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="radio" name="format" id="formatAudio" value="audio">
+          <label for="formatAudio">Apenas Áudio (MP3)</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="radio" name="format" id="formatVideo" value="video">
+          <label for="formatVideo">Apenas Vídeo (MP4)</label>
+        </div>
+      </div>
+
+      <div class="checkbox-group" style="margin-top: 15px;">
+        <input type="checkbox" id="subtitles">
+        <label for="subtitles">Baixar legendas</label>
+      </div>
+
+      <div class="button-group">
+        <button type="submit" class="btn-download" id="downloadBtn">
+          ⬇️ Baixar
+        </button>
+        <button type="button" class="btn-settings" id="settingsBtn">
+          ⚙️ Configurações
+        </button>
+      </div>
+
+      <div class="status" id="status"></div>
+
+      <div class="progress" id="progress">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">Iniciando download...</div>
+      </div>
+    </form>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
