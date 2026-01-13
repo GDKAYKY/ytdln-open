@@ -197,7 +197,8 @@ form.addEventListener('submit', async (e) => {
     sseConnection = downloadClient.startMonitoringSSE(
       currentDownloadId,
       (progress) => {
-        const percent = Math.min(100, progress.percent || 0);
+        // O modelo retorna progress como número direto (0-100), não progress.percent
+        const percent = Math.min(100, progress.progress || progress.percent || 0);
         progressFill.style.width = percent + '%';
         
         let msg = `${percent}%`;

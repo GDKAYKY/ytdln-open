@@ -20,13 +20,21 @@ class SSEManager {
     this.subscribers.get(taskId).add(response);
     console.log(`[SSE] Client subscribed to task ${taskId}. Total subscribers: ${this.subscribers.get(taskId).size}`);
 
-    // Enviar headers SSE
-    response.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
-    });
+    // Enviar headers SSE (usar setHeader se headers ainda não foram enviados)
+    if (!response.headersSent) {
+      response.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'X-Accel-Buffering': 'no' // Desabilitar buffering do nginx se houver
+      });
+    } else {
+      // Se headers já foram enviados, apenas definir os necessários
+      response.setHeader('Content-Type', 'text/event-stream');
+      response.setHeader('Cache-Control', 'no-cache');
+      response.setHeader('Connection', 'keep-alive');
+    }
 
     // Enviar comment para manter conexão viva
     response.write(': SSE connection established\n\n');

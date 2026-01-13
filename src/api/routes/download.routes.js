@@ -31,6 +31,16 @@ function createDownloadRouter(downloadController) {
   });
 
   /**
+   * GET /api/download/:taskId/file
+   * Servir arquivo baixado para download via navegador
+   * Response: arquivo binário
+   * IMPORTANTE: Esta rota deve vir ANTES de /download/:taskId/sse
+   */
+  router.get('/download/:taskId/file', (req, res) => {
+    downloadController.downloadFile(req, res);
+  });
+
+  /**
    * GET /api/download/:taskId/sse
    * Server-Sent Events para progresso em tempo real
    * Response: text/event-stream

@@ -4,6 +4,8 @@
  */
 
 const validator = require('../utils/validators');
+const fs = require('fs');
+const path = require('path');
 
 class DownloadController {
   /**
@@ -110,15 +112,27 @@ class DownloadController {
         });
       }
 
-      // Se já está completo, enviar status final e fechar
-      if (status.status === 'completed' || status.status === 'error' || status.status === 'cancelled') {
-        return res.status(200).json(status);
-      }
-
-      // Subscriber para receber atualizações
-      // Acessar sseManager através de método público ou propriedade
+      // Sempre configurar SSE headers primeiro
       const sseManager = this.downloadService.getSSEManager();
       sseManager.subscribe(taskId, res);
+
+      // Se já está completo, enviar evento de conclusão e fechar
+      if (status.status === 'completed') {
+        sseManager.sendEvent(taskId, 'complete', status);
+        setTimeout(() => {
+          sseManager.closeAllSubscribers(taskId);
+        }, 1000);
+        return;
+      }
+
+      // Se já está em erro ou cancelado, enviar evento de erro e fechar
+      if (status.status === 'error' || status.status === 'cancelled') {
+        sseManager.sendEvent(taskId, 'error', status);
+        setTimeout(() => {
+          sseManager.closeAllSubscribers(taskId);
+        }, 1000);
+        return;
+      }
 
       // Enviar status inicial após a inscrição (subscribe já configurou headers)
       // Usar sendEvent para enviar com evento nomeado 'progress'
@@ -209,6 +223,75 @@ class DownloadController {
       console.error('[DownloadController] Erro ao obter stats:', error);
       res.status(500).json({
         error: 'Erro ao obter estatísticas',
+        code: 'INTERNAL_ERROR',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  /**
+   * GET /api/download/:taskId/file
+   * Servir arquivo baixado para download via navegador
+   */
+  downloadFile(req, res) {
+    try {
+      const { taskId } = req.params;
+
+      const status = this.downloadService.getTaskStatus(taskId);
+
+      if (!status) {
+        return res.status(404).json({
+          error: 'Download não encontrado',
+          code: 'TASK_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (status.status !== 'completed' || !status.outputPath) {
+        return res.status(400).json({
+          error: 'Download não está completo ou arquivo não disponível',
+          code: 'FILE_NOT_READY',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const filePath = status.outputPath;
+
+      // Verificar se arquivo existe
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({
+          error: 'Arquivo não encontrado no sistema de arquivos',
+          code: 'FILE_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Obter nome do arquivo
+      const fileName = path.basename(filePath);
+      
+      // Definir headers para download
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      
+      // Enviar arquivo
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+      fileStream.on('error', (error) => {
+        console.error('[DownloadController] Erro ao ler arquivo:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'Erro ao ler arquivo',
+            code: 'FILE_READ_ERROR',
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+
+    } catch (error) {
+      console.error('[DownloadController] Erro ao servir arquivo:', error);
+      res.status(500).json({
+        error: 'Erro ao servir arquivo',
         code: 'INTERNAL_ERROR',
         timestamp: new Date().toISOString()
       });

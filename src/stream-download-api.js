@@ -9,13 +9,14 @@ const path = require('path');
 const fs = require('fs');
 
 class StreamDownloadAPI extends EventEmitter {
-  constructor(videoDownloader, port = 9000) {
+  constructor(videoDownloader, port = 9000, onDesktopProgress = null) {
     super();
     this.videoDownloader = videoDownloader;
     this.port = port;
     this.server = null;
     this.downloads = new Map();
     this.downloadCounter = 0;
+    this.onDesktopProgress = onDesktopProgress; // Callback para enviar progresso ao desktop
   }
 
   /**
@@ -287,16 +288,36 @@ class StreamDownloadAPI extends EventEmitter {
               downloadData.eta = progressInfo.eta || null;
               downloadData.speed = progressInfo.speed || null;
               downloadData.total = progressInfo.total || null;
+              
+              // Converter objeto parseado para string no formato esperado pelo desktop
+              // Formato: [download]  45.0% of 10.00MiB at 2.00MiB/s ETA 00:05
+              if (this.onDesktopProgress) {
+                const totalStr = progressInfo.total || '0 B';
+                const speedStr = progressInfo.speed || '0 B/s';
+                const etaStr = progressInfo.eta || '00:00';
+                const percentStr = progressInfo.percent.toFixed(1);
+                const progressString = `[download]  ${percentStr}% of ${totalStr} at ${speedStr} ETA ${etaStr}`;
+                this.onDesktopProgress(progressString);
+              }
             }
             // Se for uma string, apenas registrar no console (compatibilidade com outros casos)
             else if (typeof progressInfo === 'string') {
               console.log(`[ytdlp] ${progressInfo}`);
+              // Também enviar strings de progresso para desktop
+              if (this.onDesktopProgress && typeof progressInfo === 'string') {
+                this.onDesktopProgress(progressInfo);
+              }
             }
           },
           onError: (error) => {
             downloadData.status = 'error';
             downloadData.error = error;
             downloadData.endTime = Date.now();
+            
+            // Enviar erro para o desktop via IPC
+            if (this.onDesktopProgress) {
+              this.onDesktopProgress({ type: 'error', error: error.message || error });
+            }
           }
         }
       );
@@ -306,11 +327,22 @@ class StreamDownloadAPI extends EventEmitter {
       downloadData.outputFile = result.detectedPath;
       downloadData.endTime = Date.now();
 
+      // Enviar sucesso para o desktop via IPC
+      if (this.onDesktopProgress) {
+        this.onDesktopProgress({ type: 'success', filePath: result.detectedPath });
+      }
+
       console.log(`✓ Download ${downloadId} completado: ${result.detectedPath}`);
     } catch (error) {
       downloadData.status = 'error';
       downloadData.error = error.message;
       downloadData.endTime = Date.now();
+      
+      // Enviar erro para o desktop via IPC
+      if (this.onDesktopProgress) {
+        this.onDesktopProgress({ type: 'error', error: error.message });
+      }
+      
       console.error(`✗ Download ${downloadId} falhou:`, error);
     }
   }

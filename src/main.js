@@ -461,7 +461,27 @@ function createWindow() {
 
       // Inicializar API de Stream (versão 1.0 - mantida para compatibilidade)
       console.log("Initializing Stream Download API v1.0...");
-      streamDownloadAPI = new StreamDownloadAPI(videoDownloader, 9000);
+      // Função para enviar progresso para todas as janelas do desktop
+      const sendProgressToDesktop = (progressData) => {
+        const windows = BrowserWindow.getAllWindows();
+        windows.forEach((window) => {
+          if (!window.isDestroyed()) {
+            // Se for string de progresso (formato esperado pelo desktop)
+            if (typeof progressData === 'string') {
+              window.webContents.send("download-progress", progressData);
+            }
+            // Se for objeto com tipo (erro ou sucesso)
+            else if (typeof progressData === 'object') {
+              if (progressData.type === 'error') {
+                window.webContents.send("download-error", progressData.error);
+              } else if (progressData.type === 'success') {
+                window.webContents.send("download-success");
+              }
+            }
+          }
+        });
+      };
+      streamDownloadAPI = new StreamDownloadAPI(videoDownloader, 9000, sendProgressToDesktop);
       await streamDownloadAPI.start();
 
       // Inicializar nova API REST v2.0

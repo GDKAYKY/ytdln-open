@@ -5,6 +5,8 @@
   "description": "Download vídeos diretamente do navegador com stream usando YTDLN",
   "permissions": [
     "downloads",
+    "notifications",
+    "contextMenus",
     "tabs",
     "scripting",
     "webRequest"
