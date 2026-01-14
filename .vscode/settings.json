@@ -3,5 +3,6 @@
         "connectionId": "gdkayky",
         "projectKey": "GDKAYKY_ytdln-open"
     },
-    "livePreview.defaultPreviewPath": "/src/index.html"
+    "livePreview.defaultPreviewPath": "/src/index.html",
+    "kiroAgent.configureMCP": "Disabled"
 }

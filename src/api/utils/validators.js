@@ -40,6 +40,7 @@ function validateDownloadRequest(data) {
 
 /**
  * Validar taskId
+ * Aceita taskIds que começam com "task_" (downloads) ou "stream_" (streams)
  */
 function validateTaskId(taskId) {
   if (!taskId) {
@@ -50,11 +51,20 @@ function validateTaskId(taskId) {
     };
   }
 
-  // Deve começar com "task_"
-  if (!taskId.startsWith('task_')) {
+  // Deve começar com "task_" ou "stream_"
+  if (!taskId.startsWith('task_') && !taskId.startsWith('stream_')) {
     return {
       valid: false,
-      error: 'taskId inválido',
+      error: 'taskId inválido. Deve começar com "task_" ou "stream_"',
+      code: 'INVALID_TASK_ID'
+    };
+  }
+
+  // Validar formato básico (deve ter pelo menos 10 caracteres)
+  if (taskId.length < 10) {
+    return {
+      valid: false,
+      error: 'taskId muito curto',
       code: 'INVALID_TASK_ID'
     };
   }

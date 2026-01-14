@@ -51,9 +51,14 @@ class VideoDownloader {
     const { ffmpeg } = this.binaries;
     const args = ["--progress", "--newline"];
 
+    // Se taskId foi fornecido, usar no nome do arquivo para identificação única
+    const outputTemplate = settings.taskId 
+      ? `download_${settings.taskId}.%(ext)s`
+      : "%(title)s.%(ext)s";
+
     args.push(
       "-o",
-      path.join(app.getPath("downloads"), "%(title)s.%(ext)s"),
+      path.join(app.getPath("downloads"), outputTemplate),
       "--ffmpeg-location",
       ffmpeg,
       "--merge-output-format",
@@ -161,14 +166,29 @@ class VideoDownloader {
           }
         }
 
+        // Detectar caminho do arquivo, mas ignorar arquivos JSON/info
         const destMatch = str.match(/\[download\] Destination: (.+)/);
-        if (destMatch) detectedPath = destMatch[1].trim();
+        if (destMatch) {
+          const path = destMatch[1].trim();
+          // Ignorar arquivos JSON e outros arquivos auxiliares
+          if (!path.match(/\.(json|description|info\.json)$/i)) {
+            detectedPath = path;
+          }
+        }
 
         const mergeMatch = str.match(/\[Merger\] Merging formats into "(.+)"/);
-        if (mergeMatch) detectedPath = mergeMatch[1].trim();
+        if (mergeMatch) {
+          const path = mergeMatch[1].trim();
+          // Merge sempre é o arquivo final de vídeo/áudio
+          detectedPath = path;
+        }
 
         const fixupMatch = str.match(/\[Fixup.+\] Saving .* to "(.+)"/);
-        if (fixupMatch) detectedPath = fixupMatch[1].trim();
+        if (fixupMatch) {
+          const path = fixupMatch[1].trim();
+          // Fixup sempre é o arquivo final
+          detectedPath = path;
+        }
       });
 
       process.stderr.on("data", (data) => {
@@ -179,8 +199,49 @@ class VideoDownloader {
         }
       });
 
-      process.on("close", (code) => {
+      process.on("close", async (code) => {
         if (code === 0) {
+          const fs = require("node:fs");
+          const downloadsPath = app.getPath("downloads");
+          
+          // Se temos taskId, sabemos exatamente o nome do arquivo
+          if (settings.taskId && !detectedPath) {
+            const expectedFile = path.join(downloadsPath, `download_${settings.taskId}.${settings.outputFormat || 'mp4'}`);
+            if (fs.existsSync(expectedFile)) {
+              detectedPath = expectedFile;
+              console.log(`[VideoDownloader] Arquivo encontrado pelo taskId: ${detectedPath}`);
+            }
+          }
+          
+          // Fallback: Se detectedPath não foi encontrado, tentar encontrar o arquivo de mídia
+          if (!detectedPath || detectedPath.match(/\.(json|description)$/i)) {
+            try {
+              const files = fs.readdirSync(downloadsPath)
+                .map(file => ({
+                  name: file,
+                  path: path.join(downloadsPath, file),
+                  time: fs.statSync(path.join(downloadsPath, file)).mtime.getTime()
+                }))
+                .filter(file => {
+                  const ext = path.extname(file.name).toLowerCase();
+                  const isMedia = /\.(mp4|mp3|webm|mkv|avi|mov|flv|wmv|m4a|ogg|opus)$/i.test(ext);
+                  // Se temos taskId, filtrar por ele
+                  if (settings.taskId) {
+                    return isMedia && file.name.includes(settings.taskId);
+                  }
+                  return isMedia;
+                })
+                .sort((a, b) => b.time - a.time);
+              
+              if (files.length > 0) {
+                detectedPath = files[0].path;
+                console.log(`[VideoDownloader] Arquivo detectado automaticamente: ${detectedPath}`);
+              }
+            } catch (err) {
+              console.warn("[VideoDownloader] Erro ao detectar arquivo automaticamente:", err);
+            }
+          }
+          
           resolve({ detectedPath, duration });
         } else {
           reject(new Error(`yt-dlp exited with code ${code}`));

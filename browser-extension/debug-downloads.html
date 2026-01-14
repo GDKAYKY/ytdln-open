@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Debug Downloads - YTDLN</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    
+    button:hover {
+      opacity: 0.9;
+    }
+    
+    .log {
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 3px;
+    }
+    
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Debug Downloads - YTDLN Extension</h1>
+    
+    <div class="test-section">
+      <h3>1. Verificar Permissões</h3>
+      <button onclick="checkPermissions()">Verificar Permissões</button>
+      <div id="permissionsResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>2. Testar chrome.downloads API</h3>
+      <button onclick="testDownloadsAPI()">Testar API</button>
+      <div id="downloadsResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>3. Simular Download</h3>
+      <input type="text" id="testUrl" placeholder="URL de teste" style="width: 300px; padding: 5px;">
+      <button onclick="simulateDownload()">Simular Download</button>
+      <div id="simulateResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>4. Listar Downloads Atuais</h3>
+      <button onclick="listDownloads()">Listar Downloads</button>
+      <div id="listResult" class="log"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>5. Verificar Servidor YTDLN</h3>
+      <button onclick="checkServer()">Verificar Servidor</button>
+      <div id="serverResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>7. Simular Problema JSON</h3>
+      <button onclick="simulateJsonProblem()">Simular Download JSON</button>
+      <div id="jsonProblemResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>📋 Log de Debug</h3>
+      <button onclick="clearLog()">Limpar Log</button>
+      <div id="debugLog" class="log"></div>
+    </div>
+  </div>
+
+  <script>
+    function log(message) {
+      const logDiv = document.getElementById('debugLog');
+      const timestamp = new Date().toLocaleTimeString();
+      logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function showResult(elementId, message, type = 'info') {
+      const element = document.getElementById(elementId);
+      element.textContent = message;
+      element.className = `status ${type}`;
+      log(`${type.toUpperCase()}: ${message}`);
+    }
+
+    async function checkPermissions() {
+      try {
+        const permissions = await chrome.permissions.getAll();
+        log('Permissões atuais: ' + JSON.stringify(permissions));
+        
+        if (permissions.permissions.includes('downloads')) {
+          showResult('permissionsResult', '✅ Permissão de downloads OK', 'success');
+        } else {
+          showResult('permissionsResult', '❌ Permissão de downloads não encontrada', 'error');
+        }
+      } catch (error) {
+        showResult('permissionsResult', `Erro: ${error.message}`, 'error');
+      }
+    }
+
+    async function testDownloadsAPI() {
+      try {
+        // Testar se a API está disponível
+        if (typeof chrome.downloads === 'undefined') {
+          showResult('downloadsResult', '❌ chrome.downloads não disponível', 'error');
+          return;
+        }
+
+        // Testar download de um arquivo pequeno
+        const testUrl = 'data:text/plain;base64,SGVsbG8gV29ybGQ='; // "Hello World"
+        
+        chrome.downloads.download({
+          url: testUrl,
+          filename: 'test-ytdln.txt',
+          saveAs: false
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            showResult('downloadsResult', `❌ Erro: ${chrome.runtime.lastError.message}`, 'error');
+          } else {
+            showResult('downloadsResult', `✅ Teste OK! Download ID: ${downloadId}`, 'success');
+            
+            // Verificar se apareceu na lista
+            setTimeout(() => {
+              chrome.downloads.search({ id: downloadId }, (results) => {
+                if (results && results[0]) {
+                  log(`✅ Download confirmado na lista: ${results[0].filename}`);
+                } else {
+                  log(`⚠️ Download não encontrado na lista`);
+                }
+              });
+            }, 1000);
+          }
+        });
+      } catch (error) {
+        showResult('downloadsResult', `Erro: ${error.message}`, 'error');
+      }
+    }
+
+    async function simulateDownload() {
+      const url = document.getElementById('testUrl').value || 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
+      
+      try {
+        showResult('simulateResult', 'Simulando download...', 'info');
+        
+        // Simular chamada para o background script
+        chrome.runtime.sendMessage({
+          action: 'downloadVideo',
+          url: url,
+          format: 'best'
+        }, (response) => {
+          if (response && response.success) {
+            showResult('simulateResult', '✅ Mensagem enviada para background', 'success');
+          } else {
+            showResult('simulateResult', '❌ Falha ao enviar mensagem', 'error');
+          }
+        });
+      } catch (error) {
+        showResult('simulateResult', `Erro: ${error.message}`, 'error');
+      }
+    }
+
+    async function listDownloads() {
+      try {
+        chrome.downloads.search({}, (downloads) => {
+          const listDiv = document.getElementById('listResult');
+          
+          if (downloads.length === 0) {
+            listDiv.textContent = 'Nenhum download encontrado';
+            return;
+          }
+          
+          const recent = downloads.slice(0, 10); // Últimos 10
+          listDiv.innerHTML = recent.map(d => 
+            `ID: ${d.id} | ${d.filename} | ${d.state} | ${new Date(d.startTime).toLocaleString()}`
+          ).join('\n');
+          
+          log(`Encontrados ${downloads.length} downloads, mostrando ${recent.length}`);
+        });
+      } catch (error) {
+        showResult('listResult', `Erro: ${error.message}`, 'error');
+      }
+    }
+
+    async function checkServer() {
+      try {
+        const response = await fetch('http://localhost:9001/health');
+        
+        if (response.ok) {
+          const data = await response.json();
+          showResult('serverResult', `✅ Servidor OK: ${JSON.stringify(data)}`, 'success');
+        } else {
+          showResult('serverResult', `❌ Servidor retornou: ${response.status}`, 'error');
+        }
+      } catch (error) {
+        showResult('serverResult', `❌ Servidor offline: ${error.message}`, 'error');
+      }
+    }
+
+    async function testContentType() {
+      try {
+        // Testar endpoint que pode retornar JSON
+        const testUrl = 'http://localhost:9001/api/download/test123/file';
+        const response = await fetch(testUrl, { method: 'HEAD' });
+        
+        const contentType = response.headers.get('content-type');
+        log(`Content-Type da API: ${contentType}`);
+        
+        if (contentType && contentType.includes('application/json')) {
+          showResult('contentTypeResult', `⚠️ API retorna JSON (${contentType}) - Não deve baixar`, 'error');
+        } else if (contentType) {
+          showResult('contentTypeResult', `✅ Content-Type OK: ${contentType}`, 'success');
+        } else {
+          showResult('contentTypeResult', `⚠️ Sem Content-Type definido`, 'info');
+        }
+      } catch (error) {
+        showResult('contentTypeResult', `Erro: ${error.message}`, 'error');
+      }
+    }
+
+    async function simulateJsonProblem() {
+      try {
+        // Simular o problema: tentar baixar uma resposta JSON
+        const jsonUrl = 'data:application/json;base64,eyJzdWNjZXNzIjp0cnVlLCJmaWxlUGF0aCI6Ii9wYXRoL3ZpZGVvLm1wNCJ9';
+        
+        showResult('jsonProblemResult', 'Simulando download de JSON...', 'info');
+        
+        chrome.downloads.download({
+          url: jsonUrl,
+          filename: 'PROBLEMA-response.json',
+          saveAs: false
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            showResult('jsonProblemResult', `❌ Erro (esperado): ${chrome.runtime.lastError.message}`, 'success');
+          } else {
+            showResult('jsonProblemResult', `⚠️ JSON foi baixado! ID: ${downloadId} - ISSO É O PROBLEMA`, 'error');
+            log(`⚠️ Arquivo JSON baixado com ID ${downloadId} - isso demonstra o problema`);
+          }
+        });
+      } catch (error) {
+        showResult('jsonProblemResult', `Erro: ${error.message}`, 'error');
+      }
+    }
+
+    function clearLog() {
+      document.getElementById('debugLog').innerHTML = '';
+    }
+
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', () => {
+      log('🔧 Debug page carregada');
+      checkPermissions();
+    });
+  </script>
+</body>
+</html>

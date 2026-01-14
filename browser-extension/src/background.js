@@ -24,9 +24,41 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Função para normalizar e codificar URL corretamente
+function normalizeUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  
+  try {
+    // Tentar criar objeto URL diretamente primeiro
+    try {
+      const urlObj = new URL(url);
+      // Se funcionou, retornar href (já normalizado)
+      return urlObj.href;
+    } catch {
+      // Se falhar, tentar decodificar e recodificar
+      try {
+        // Decodificar caracteres especiais que podem estar mal codificados
+        let decoded = decodeURIComponent(url);
+        // Recodificar corretamente
+        const urlObj = new URL(decoded);
+        return urlObj.href;
+      } catch {
+        // Último recurso: usar encodeURI para codificar caracteres especiais
+        return encodeURI(url);
+      }
+    }
+  } catch (error) {
+    console.warn('[Background] Erro ao normalizar URL:', error, url);
+    return url; // Retornar URL original se tudo falhar
+  }
+}
+
 // Tratador de cliques no menu de contexto
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  const url = info.linkUrl || info.pageUrl;
+  let url = info.linkUrl || info.pageUrl;
+  
+  // Normalizar URL antes de usar
+  url = normalizeUrl(url);
 
   if (info.menuItemId === 'download-video') {
     downloadWithFormat(url, 'best');
@@ -123,14 +155,6 @@ function showNotification(title, message) {
   });
 }
 
-// Escutar mensagens do popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'downloadVideo') {
-    downloadWithFormat(request.url, request.format);
-    sendResponse({ success: true });
-  }
-});
-
 // Monitorar status de um download
 async function monitorDownload(taskId) {
   const downloadInfo = activeDownloads.get(taskId);
@@ -154,43 +178,20 @@ async function monitorDownload(taskId) {
       if (status.status === 'completed') {
         // Download completo!
         activeDownloads.delete(taskId);
-        const formatText = downloadInfo.format === 'audio' ? 'áudio' : 'vídeo';
         
-        // Obter nome do arquivo do status
-        const fileName = status.outputPath ? status.outputPath.split(/[/\\]/).pop() : 'arquivo';
+        const fileName = status.outputPath ? status.outputPath.split(/[/\\]/).pop() : `download_${taskId}`;
         
-        // Usar API de downloads do Chrome para adicionar à lista de downloads do navegador
-        const downloadUrl = `http://localhost:9001/api/download/${taskId}/file`;
+        console.log('[Background] Download concluído:', {
+          taskId,
+          fileName,
+          outputPath: status.outputPath
+        });
         
-        console.log(`[Background] Adicionando download à lista do navegador: ${downloadUrl}`);
-        
-        try {
-          chrome.downloads.download({
-            url: downloadUrl,
-            filename: fileName,
-            saveAs: false,
-            conflictAction: 'uniquify'
-          }, (downloadId) => {
-            if (chrome.runtime.lastError) {
-              console.error('[Background] Erro ao adicionar à lista de downloads:', chrome.runtime.lastError.message);
-              showNotification('Download Concluído ✅', `Seu ${formatText} foi baixado com sucesso!`);
-            } else {
-              console.log(`[Background] Download adicionado à lista do navegador com ID: ${downloadId}`);
-              
-              // Opcional: Adicionar metadados ao download (não muda o texto "Download feito por" mas pode ser útil)
-              chrome.downloads.search({ id: downloadId }, (results) => {
-                if (results && results[0]) {
-                  console.log(`[Background] Download aparecendo na página de downloads do navegador`);
-                }
-              });
-              
-              showNotification('Download Concluído ✅', `${fileName} foi adicionado aos downloads do navegador!`);
-            }
-          });
-        } catch (error) {
-          console.error('[Background] Exceção ao chamar chrome.downloads.download:', error);
-          showNotification('Download Concluído ✅', `Seu ${formatText} foi baixado com sucesso!`);
-        }
+        // ✨ NOVO FLUXO: Apenas notificar
+        // popup.js já gerencia o download do arquivo via /api/download/:taskId/stream
+        // Isso evita download duplicado
+        showNotification('Download Concluído ✅', 
+          `${fileName} foi baixado com sucesso!`);
         
         return;
       }
@@ -212,7 +213,7 @@ async function monitorDownload(taskId) {
       // Continuar monitorando se ainda está em progresso
       attempts++;
       if (attempts < maxAttempts && (status.status === 'downloading' || status.status === 'queued' || status.status === 'merging' || status.status === 'processing')) {
-        setTimeout(checkStatus, 2000); // Verificar a cada 2 segundos
+        setTimeout(checkStatus, 5000); // Verificar a cada 5 segundos (reduzido de 2s)
       } else if (attempts >= maxAttempts) {
         // Timeout - parar monitoramento
         activeDownloads.delete(taskId);
@@ -234,6 +235,14 @@ async function monitorDownload(taskId) {
   // Iniciar verificação após 2 segundos
   setTimeout(checkStatus, 2000);
 }
+
+// Escutar mensagens do popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'downloadVideo') {
+    downloadWithFormat(request.url, request.format);
+    sendResponse({ success: true });
+  }
+});
 
 // Health check periódico (API v2.0)
 setInterval(() => {

@@ -105,6 +105,7 @@ class DownloadService {
       // Chamar o videoDownloader
       // Mapear parâmetros da API REST para o formato esperado pelo VideoDownloader
       const settings = {
+        taskId: task.taskId, // IMPORTANTE: Passar taskId para identificar o arquivo
         outputFormat: 'mp4',
         quality: task.format === 'audio' ? 'best' : (task.format || 'best'),
         concurrentFragments: 8,
@@ -140,6 +141,7 @@ class DownloadService {
       task.status = 'completed';
       task.phase = null;
       task.outputFile = result.detectedPath;
+      task.outputPath = result.detectedPath; // Também definir para streaming
 
       // Marcar como completo na fila
       this.downloadQueue.markAsCompleted(task.taskId, result.detectedPath);
@@ -202,6 +204,75 @@ class DownloadService {
    */
   getSSEManager() {
     return this.sseManager;
+  }
+
+  /**
+   * Criar stream de leitura para arquivo em download
+   * Permite ler o arquivo enquanto ainda está sendo baixado
+   * 
+   * @param {string} taskId - ID da tarefa
+   * @returns {ReadableStream|null} Stream do arquivo ou null se não encontrado
+   */
+  createReadStream(taskId) {
+    const task = this.downloadQueue.getTaskStatus(taskId);
+    
+    if (!task) {
+      console.warn(`[DownloadService] Task ${taskId} não encontrada`);
+      return null;
+    }
+
+    if (!task.outputPath) {
+      console.warn(`[DownloadService] Task ${taskId} não tem outputPath`);
+      return null;
+    }
+
+    const fs = require('fs');
+    
+    // Criar stream de leitura
+    // O arquivo pode estar sendo escrito enquanto lemos
+    const stream = fs.createReadStream(task.outputPath, {
+      highWaterMark: 64 * 1024, // 64KB chunks
+      autoClose: true
+    });
+
+    return stream;
+  }
+
+  /**
+   * Obter informações do arquivo para streaming
+   * Retorna tamanho atual e se está completo
+   * 
+   * @param {string} taskId - ID da tarefa
+   * @returns {Object|null} { fileSize, isComplete, fileName } ou null
+   */
+  getStreamInfo(taskId) {
+    const task = this.downloadQueue.getTaskStatus(taskId);
+    
+    if (!task) {
+      return null;
+    }
+
+    if (!task.outputPath) {
+      return null;
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    try {
+      const stats = fs.statSync(task.outputPath);
+      
+      return {
+        fileSize: stats.size,
+        isComplete: task.status === 'completed',
+        fileName: path.basename(task.outputPath),
+        status: task.status,
+        progress: task.progress || 0
+      };
+    } catch (error) {
+      console.error(`[DownloadService] Erro ao obter info do arquivo:`, error);
+      return null;
+    }
   }
 }
 

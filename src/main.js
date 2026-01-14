@@ -481,8 +481,11 @@ function createWindow() {
           }
         });
       };
-      streamDownloadAPI = new StreamDownloadAPI(videoDownloader, 9000, sendProgressToDesktop);
-      await streamDownloadAPI.start();
+      
+      // ❌ DESABILITADO: StreamDownloadAPI v1.0 (porta 9000)
+      // Usar apenas DownloadService (porta 9001) para evitar duplicação
+      // streamDownloadAPI = new StreamDownloadAPI(videoDownloader, 9000, sendProgressToDesktop);
+      // await streamDownloadAPI.start();
 
       // Inicializar nova API REST v2.0
       console.log("Initializing REST API v2.0...");
@@ -517,7 +520,7 @@ function createWindow() {
           status: "ok",
           version: "2.0.0",
           timestamp: new Date().toISOString(),
-          queue: downloadQueue.getStats(),
+          queue: downloadQueue.getStats()
         });
       });
 

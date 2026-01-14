@@ -3,6 +3,25 @@
  */
 
 const express = require('express');
+const { validateTaskId } = require('../utils/validators');
+
+/**
+ * Middleware para validar taskId
+ */
+function validateTaskIdMiddleware(req, res, next) {
+  const { taskId } = req.params;
+  const validation = validateTaskId(taskId);
+  
+  if (!validation.valid) {
+    return res.status(400).json({
+      error: validation.error,
+      code: validation.code,
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  next();
+}
 
 /**
  * Criar router de downloads
@@ -26,7 +45,7 @@ function createDownloadRouter(downloadController) {
    * Obter status do download
    * Response: { taskId, status, progress, ... }
    */
-  router.get('/download/status/:taskId', (req, res) => {
+  router.get('/download/status/:taskId', validateTaskIdMiddleware, (req, res) => {
     downloadController.getDownloadStatus(req, res);
   });
 
@@ -36,8 +55,24 @@ function createDownloadRouter(downloadController) {
    * Response: arquivo binário
    * IMPORTANTE: Esta rota deve vir ANTES de /download/:taskId/sse
    */
-  router.get('/download/:taskId/file', (req, res) => {
+  router.get('/download/:taskId/file', validateTaskIdMiddleware, (req, res) => {
     downloadController.downloadFile(req, res);
+  });
+
+  /**
+   * GET /api/download/:taskId/stream
+   * Streaming em tempo real - Serve o arquivo enquanto está sendo baixado
+   * 
+   * Fluxo:
+   * 1. Backend inicia download
+   * 2. Chrome se conecta a este endpoint
+   * 3. Recebe o arquivo conforme o backend vai baixando
+   * 4. Sem duplicação, sem buffering duplo
+   * 
+   * Response: arquivo binário (streaming)
+   */
+  router.get('/download/:taskId/stream', validateTaskIdMiddleware, (req, res) => {
+    downloadController.streamDownload(req, res);
   });
 
   /**
@@ -45,7 +80,7 @@ function createDownloadRouter(downloadController) {
    * Server-Sent Events para progresso em tempo real
    * Response: text/event-stream
    */
-  router.get('/download/:taskId/sse', (req, res) => {
+  router.get('/download/:taskId/sse', validateTaskIdMiddleware, (req, res) => {
     downloadController.streamProgress(req, res);
   });
 
@@ -63,7 +98,7 @@ function createDownloadRouter(downloadController) {
    * Cancelar um download
    * Response: { taskId, status, message }
    */
-  router.post('/download/:taskId/cancel', (req, res) => {
+  router.post('/download/:taskId/cancel', validateTaskIdMiddleware, (req, res) => {
     downloadController.cancelDownload(req, res);
   });
 

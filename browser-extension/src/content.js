@@ -74,7 +74,8 @@ function createFloatingButton() {
   });
   
   button.addEventListener('click', () => {
-    const currentUrl = window.location.href;
+    // Normalizar URL antes de enviar para garantir encoding correto
+    const currentUrl = normalizeUrl(window.location.href);
     chrome.runtime.sendMessage({
       action: 'fillUrl',
       url: currentUrl
@@ -101,20 +102,74 @@ document.addEventListener('contextmenu', (e) => {
     }
     
     if (url && isValidVideoUrl(url)) {
+      // Normalizar URL antes de enviar para garantir encoding correto
+      const normalizedUrl = normalizeUrl(url);
       chrome.runtime.sendMessage({
         action: 'videoLinkDetected',
-        url: url
+        url: normalizedUrl
       });
     }
   }
 }, true);
 
+// Função para normalizar e codificar URL corretamente
+function normalizeUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  
+  try {
+    // Tentar criar objeto URL diretamente primeiro
+    try {
+      const urlObj = new URL(url);
+      // Se funcionou, retornar href (já normalizado)
+      return urlObj.href;
+    } catch {
+      // Se falhar, tentar com base URL
+      try {
+        const urlObj = new URL(url, window.location.origin);
+        return urlObj.href;
+      } catch {
+        // Se ainda falhar, tentar decodificar e recodificar
+        try {
+          // Decodificar caracteres especiais que podem estar mal codificados
+          let decoded = decodeURIComponent(url);
+          // Recodificar corretamente
+          const urlObj = new URL(decoded, window.location.origin);
+          return urlObj.href;
+        } catch {
+          // Último recurso: usar encodeURI para codificar caracteres especiais
+          return encodeURI(url);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[YTDLN] Erro ao normalizar URL:', error, url);
+    return url; // Retornar URL original se tudo falhar
+  }
+}
+
 function isValidVideoUrl(url) {
   try {
-    const urlObj = new URL(url, window.location.origin);
+    // Normalizar URL primeiro para garantir encoding correto
+    const normalizedUrl = normalizeUrl(url);
+    const urlObj = new URL(normalizedUrl, window.location.origin);
+    
+    // Verificar se é HTTP ou HTTPS
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      return false;
+    }
+    
     const ext = urlObj.pathname.toLowerCase();
-    return /\.(mp4|mkv|webm|avi|mov|flv|wmv|m3u8|mpd)$/i.test(ext) ||
-           VIDEO_PATTERNS.some(p => p.test(url));
+    
+    // Aceitar URLs de vídeo diretas (extensões de arquivo)
+    const isVideoFile = /\.(mp4|mkv|webm|avi|mov|flv|wmv|m3u8|mpd)$/i.test(ext);
+    
+    // Aceitar URLs de sites de vídeo conhecidos
+    const isVideoSite = VIDEO_PATTERNS.some(p => p.test(normalizedUrl));
+    
+    // Aceitar qualquer URL HTTP/HTTPS válida (yt-dlp pode processar)
+    // Isso permite que URLs com .htm, .html ou outros formatos sejam processadas
+    // yt-dlp é capaz de extrair vídeos de páginas HTML também
+    return isVideoFile || isVideoSite || urlObj.hostname.length > 0;
   } catch {
     return false;
   }
@@ -137,7 +192,9 @@ addFloatingDownloadButton();
 // Escutar mensagens do background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getPageUrl') {
-    sendResponse({ url: window.location.href });
+    // Normalizar URL antes de enviar para garantir encoding correto
+    const normalizedUrl = normalizeUrl(window.location.href);
+    sendResponse({ url: normalizedUrl });
   }
 });
 

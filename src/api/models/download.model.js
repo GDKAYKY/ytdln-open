@@ -36,7 +36,8 @@ class DownloadTask {
     this.elapsedTime = '00:00'; // formatted time
     
     // Resultado
-    this.outputFile = null; // Caminho do arquivo final
+    this.outputFile = null; // Caminho do arquivo final (compatibilidade)
+    this.outputPath = null; // Caminho do arquivo final (para streaming)
     this.error = null; // Mensagem de erro
     
     // Internals
@@ -104,6 +105,7 @@ class DownloadTask {
     this.status = 'completed';
     this.progress = 100;
     this.outputFile = outputFile;
+    this.outputPath = outputFile; // Também definir outputPath para streaming
     this.endTime = Date.now();
     this.phase = null;
   }

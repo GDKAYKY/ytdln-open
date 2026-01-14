@@ -22,13 +22,16 @@ api/
 ├── services/
 │   ├── download-queue.js           ← Fila + Workers
 │   ├── sse-manager.js              ← Server-Sent Events
-│   └── download.service.js         ← Orquestra tudo
+│   ├── download.service.js         ← Orquestra downloads
+│   └── streaming.service.js        ← Streaming yt-dlp → FFmpeg → HTTP
 │
 ├── controllers/
-│   └── download.controller.js       ← HTTP handlers
+│   ├── download.controller.js       ← HTTP handlers (downloads)
+│   └── stream.controller.js         ← HTTP handlers (streaming)
 │
 ├── routes/
-│   └── download.routes.js           ← Endpoints REST
+│   ├── download.routes.js           ← Endpoints REST (downloads)
+│   └── stream.routes.js             ← Endpoints REST (streaming)
 │
 ├── utils/
 │   └── validators.js                ← Validações
@@ -72,7 +75,24 @@ client.startMonitoringSSE(result.taskId, {
 });
 ```
 
-### 3. Testar
+### 3. Endpoints Disponíveis
+
+#### Downloads
+- `POST /api/download` - Criar download
+- `GET /api/download/status/:taskId` - Status do download
+- `GET /api/download/:taskId/file` - Baixar arquivo
+- `GET /api/download/:taskId/sse` - Progresso via SSE
+- `GET /api/downloads` - Listar downloads
+- `POST /api/download/:taskId/cancel` - Cancelar download
+- `GET /api/stats` - Estatísticas
+
+#### Streaming (Nova)
+- `POST /api/stream` - Criar stream
+- `GET /api/stream/:taskId` - Stream de mídia (HTTP chunked)
+- `GET /api/stream/:taskId/status` - Progresso do stream
+- `POST /api/stream/:taskId/stop` - Parar stream
+
+### 4. Testar
 
 ```bash
 # Health check

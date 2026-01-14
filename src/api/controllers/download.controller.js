@@ -297,6 +297,109 @@ class DownloadController {
       });
     }
   }
+
+  /**
+   * GET /api/download/:taskId/stream
+   * Streaming em tempo real - Serve o arquivo enquanto está sendo baixado
+   * 
+   * Fluxo:
+   * 1. Backend inicia download
+   * 2. Chrome se conecta a este endpoint
+   * 3. Recebe o arquivo conforme o backend vai baixando
+   * 4. Sem duplicação, sem buffering duplo
+   */
+  streamDownload(req, res) {
+    try {
+      const { taskId } = req.params;
+
+      const status = this.downloadService.getTaskStatus(taskId);
+
+      if (!status) {
+        return res.status(404).json({
+          error: 'Download não encontrado',
+          code: 'TASK_NOT_FOUND',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Obter informações do arquivo
+      const streamInfo = this.downloadService.getStreamInfo(taskId);
+      
+      if (!streamInfo) {
+        return res.status(400).json({
+          error: 'Arquivo não disponível para streaming',
+          code: 'FILE_NOT_AVAILABLE',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Definir headers para download
+      res.setHeader('Content-Disposition', `attachment; filename="${streamInfo.fileName}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      
+      // Se arquivo está completo, enviar Content-Length
+      if (streamInfo.isComplete && streamInfo.fileSize > 0) {
+        res.setHeader('Content-Length', streamInfo.fileSize);
+        console.log(`[DownloadController] Streaming completo: ${streamInfo.fileName} (${streamInfo.fileSize} bytes)`);
+      } else {
+        // Se ainda está sendo baixado, usar chunked
+        res.setHeader('Transfer-Encoding', 'chunked');
+        console.log(`[DownloadController] Streaming em progresso: ${streamInfo.fileName} (${streamInfo.progress}%)`);
+      }
+
+      // Criar stream de leitura
+      const fileStream = this.downloadService.createReadStream(taskId);
+      
+      if (!fileStream) {
+        return res.status(500).json({
+          error: 'Erro ao criar stream',
+          code: 'STREAM_ERROR',
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Pipar arquivo para resposta
+      fileStream.pipe(res);
+
+      // Tratar erros do stream
+      fileStream.on('error', (error) => {
+        console.error(`[DownloadController] Erro no stream ${taskId}:`, error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'Erro ao servir stream',
+            code: 'STREAM_ERROR',
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          res.destroy();
+        }
+      });
+
+      // Tratar desconexão do cliente
+      res.on('close', () => {
+        console.log(`[DownloadController] Cliente desconectou do stream ${taskId}`);
+        fileStream.destroy();
+      });
+
+      res.on('error', (error) => {
+        console.error(`[DownloadController] Erro na resposta ${taskId}:`, error);
+        fileStream.destroy();
+      });
+
+    } catch (error) {
+      console.error('[DownloadController] Erro ao servir stream:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Erro ao servir stream',
+          code: 'INTERNAL_ERROR',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  }
 }
 
 module.exports = DownloadController;

@@ -134,7 +134,8 @@ function showProgress(show = true) {
 // Obter URL da aba ativa
 async function getCurrentTabUrl() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab.url;
+  // Normalizar URL antes de retornar
+  return normalizeUrl(tab.url);
 }
 
 // Carregar URL da aba quando abrir
@@ -154,15 +155,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(checkServerConnection, 5000);
 });
 
+// Função para normalizar e codificar URL corretamente
+function normalizeUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  
+  try {
+    // Tentar criar objeto URL diretamente primeiro
+    try {
+      const urlObj = new URL(url);
+      // Se funcionou, retornar href (já normalizado)
+      return urlObj.href;
+    } catch {
+      // Se falhar, tentar decodificar e recodificar
+      try {
+        // Decodificar caracteres especiais que podem estar mal codificados
+        let decoded = decodeURIComponent(url);
+        // Recodificar corretamente
+        const urlObj = new URL(decoded);
+        return urlObj.href;
+      } catch {
+        // Último recurso: usar encodeURI para codificar caracteres especiais
+        return encodeURI(url);
+      }
+    }
+  } catch (error) {
+    console.warn('[Popup] Erro ao normalizar URL:', error, url);
+    return url; // Retornar URL original se tudo falhar
+  }
+}
+
 // Enviar para download usando nova API v2.0
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   
-  const url = urlInput.value.trim();
+  let url = urlInput.value.trim();
   if (!url) {
     showStatus('Por favor, insira uma URL válida', 'error');
     return;
   }
+  
+  // Normalizar URL antes de usar
+  url = normalizeUrl(url);
   
   if (!serverConnected) {
     showStatus('Servidor não conectado. Inicie o aplicativo YTDLN', 'error');
@@ -211,22 +244,71 @@ form.addEventListener('submit', async (e) => {
       (result) => {
         progressFill.style.width = '100%';
         progressText.textContent = '✅ Concluído!';
+        
+        // ✨ NOVO FLUXO: Enviar direto para o Chrome baixar do endpoint de streaming
+        // Não espera o arquivo estar completo, Chrome recebe em tempo real
+        if (currentDownloadId) {
+          const fileName = result.fileName || `download_${currentDownloadId}.mp4`;
+          // ✨ Usar endpoint de streaming em tempo real
+          const streamUrl = `http://localhost:9001/api/download/${currentDownloadId}/stream`;
+          
+          console.log('[Popup] Enviando para Chrome (streaming em tempo real):', { streamUrl, fileName });
+          
+          // Usar setTimeout para garantir que o SSE foi fechado antes
+          setTimeout(() => {
+            chrome.downloads.download({
+              url: streamUrl,  // ✨ Endpoint de streaming em tempo real
+              filename: fileName,
+              saveAs: false,
+              conflictAction: 'uniquify'
+            }, (chromeDownloadId) => {
+              if (chrome.runtime.lastError) {
+                console.warn('[Popup] Erro ao enviar para Chrome:', chrome.runtime.lastError.message);
+              } else {
+                console.log(`[Popup] ✅ Enviado para Chrome (streaming)! ID: ${chromeDownloadId}`);
+              }
+            });
+          }, 500);
+        }
+        
         setTimeout(() => {
           showProgress(false);
         }, 2000);
       },
       (error) => {
-        showStatus(`❌ Erro: ${error.message}`, 'error');
+        console.error('[Download] Erro no SSE:', error);
+        let errorMessage = error.message || 'Erro desconhecido no download';
+        showStatus(`❌ Erro: ${errorMessage}`, 'error');
         showProgress(false);
       }
     );
   } catch (error) {
-    console.error('Erro:', error);
-    showStatus(`Erro: ${error.message}`, 'error');
+    console.error('[Download] Erro completo:', error);
+    
+    // Mensagem de erro mais detalhada
+    let errorMessage = 'Erro desconhecido';
+    
+    if (error.message) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error.toString && error.toString() !== '[object Object]') {
+      errorMessage = error.toString();
+    }
+    
+    // Verificar se é erro de conexão
+    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError') || errorMessage.includes('ERR_CONNECTION_REFUSED')) {
+      errorMessage = 'Não foi possível conectar ao servidor. Certifique-se de que o YTDLN Desktop está executando.';
+    } else if (!errorMessage || errorMessage === 'Erro desconhecido') {
+      errorMessage = `Erro ao iniciar download. Verifique o console para mais detalhes. (${error.name || 'Unknown'})`;
+    }
+    
+    showStatus(`❌ Erro: ${errorMessage}`, 'error');
   } finally {
     downloadBtn.disabled = false;
   }
 });
+
 // Abrir configurações
 settingsBtn.addEventListener('click', () => {
   chrome.runtime.openOptionsPage?.() || chrome.tabs.create({
@@ -237,7 +319,9 @@ settingsBtn.addEventListener('click', () => {
 // Auto-preencher URL se vinda do contexto menu
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'fillUrl') {
-    urlInput.value = request.url;
+    // Normalizar URL antes de preencher
+    const normalizedUrl = normalizeUrl(request.url);
+    urlInput.value = normalizedUrl;
     urlInput.focus();
   }
 });

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teste Stream Endpoint - YTDLN</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    
+    button:hover {
+      opacity: 0.9;
+    }
+    
+    input[type="text"] {
+      width: 300px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      margin: 5px;
+    }
+    
+    .result {
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 3px;
+    }
+    
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 Teste Stream Endpoint - YTDLN</h1>
+    
+    <div class="test-section">
+      <h3>1. Testar Endpoint de Stream</h3>
+      <input type="text" id="taskIdInput" placeholder="Task ID (ex: download_123)" value="download_123">
+      <button onclick="testStreamEndpoint()">Testar Stream</button>
+      <div id="streamResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>2. Verificar Headers HTTP</h3>
+      <button onclick="checkHeaders()">Verificar Headers</button>
+      <div id="headersResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>3. Testar Download via Extensão</h3>
+      <button onclick="testExtensionDownload()">Simular Download da Extensão</button>
+      <div id="extensionResult" class="status"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>4. Listar Downloads Ativos</h3>
+      <button onclick="listActiveDownloads()">Listar Downloads</button>
+      <div id="downloadsResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+      <h3>📋 Log de Testes</h3>
+      <button onclick="clearLog()">Limpar Log</button>
+      <div id="testLog" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    function log(message) {
+      const logDiv = document.getElementById('testLog');
+      const timestamp = new Date().toLocaleTimeString();
+      logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function showResult(elementId, message, type = 'info') {
+      const element = document.getElementById(elementId);
+      element.textContent = message;
+      element.className = `status ${type}`;
+      log(`${type.toUpperCase()}: ${message}`);
+    }
+
+    async function testStreamEndpoint() {
+      const taskId = document.getElementById('taskIdInput').value.trim();
+      
+      if (!taskId) {
+        showResult('streamResult', 'Por favor, insira um Task ID', 'error');
+        return;
+      }
+      
+      try {
+        const streamUrl = `http://localhost:9001/api/download/${taskId}/stream`;
+        log(`Testando endpoint: ${streamUrl}`);
+        
+        const response = await fetch(streamUrl, { method: 'HEAD' });
+        
+        if (response.ok) {
+          const contentType = response.headers.get('content-type');
+          const contentLength = response.headers.get('content-length');
+          const disposition = response.headers.get('content-disposition');
+          
+          // Verificar se é HTML (problema comum)
+          if (contentType && contentType.includes('text/html')) {
+            showResult('streamResult', 
+              `❌ PROBLEMA: Endpoint retorna HTML! Type: ${contentType}`, 
+              'error');
+            log(`⚠️ Endpoint retorna página HTML, não arquivo binário`);
+          } else if (contentType && contentType.includes('application/json')) {
+            showResult('streamResult', 
+              `❌ PROBLEMA: Endpoint retorna JSON! Type: ${contentType}`, 
+              'error');
+            log(`⚠️ Endpoint retorna JSON, não arquivo binário`);
+          } else if (!contentLength || parseInt(contentLength) < 1000) {
+            showResult('streamResult', 
+              `⚠️ SUSPEITO: Arquivo muito pequeno (${contentLength} bytes)`, 
+              'error');
+            log(`⚠️ Arquivo suspeito - muito pequeno para ser vídeo`);
+          } else {
+            showResult('streamResult', 
+              `✅ Endpoint OK! Type: ${contentType}, Size: ${contentLength} bytes`, 
+              'success');
+            log(`✅ Endpoint parece servir arquivo válido`);
+          }
+          
+          log(`Headers: Content-Type=${contentType}, Content-Length=${contentLength}`);
+          log(`Content-Disposition: ${disposition}`);
+          
+        } else {
+          const errorText = await response.text();
+          showResult('streamResult', 
+            `❌ Erro ${response.status}: ${errorText}`, 
+            'error');
+          
+          // Se for 404, provavelmente retorna HTML
+          if (response.status === 404) {
+            log(`⚠️ 404 - Endpoint não implementado, provavelmente retorna página HTML`);
+          }
+        }
+      } catch (error) {
+        showResult('streamResult', `❌ Erro de conexão: ${error.message}`, 'error');
+      }
+    }
+
+    async function checkHeaders() {
+      const taskId = document.getElementById('taskIdInput').value.trim() || 'test123';
+      const streamUrl = `http://localhost:9001/api/download/${taskId}/stream`;
+      
+      try {
+        const response = await fetch(streamUrl, { method: 'HEAD' });
+        
+        const headersDiv = document.getElementById('headersResult');
+        let headersText = `Status: ${response.status} ${response.statusText}\n\n`;
+        
+        for (const [key, value] of response.headers.entries()) {
+          headersText += `${key}: ${value}\n`;
+        }
+        
+        headersDiv.textContent = headersText;
+        log(`Headers verificados para ${streamUrl}`);
+        
+      } catch (error) {
+        document.getElementById('headersResult').textContent = `Erro: ${error.message}`;
+        log(`Erro ao verificar headers: ${error.message}`);
+      }
+    }
+
+    async function testExtensionDownload() {
+      const taskId = document.getElementById('taskIdInput').value.trim() || 'test123';
+      
+      try {
+        if (typeof chrome === 'undefined' || !chrome.downloads) {
+          showResult('extensionResult', 
+            '❌ Esta página deve ser aberta como extensão para testar downloads', 
+            'error');
+          return;
+        }
+        
+        const streamUrl = `http://localhost:9001/api/download/${taskId}/stream`;
+        
+        chrome.downloads.download({
+          url: streamUrl,
+          filename: `teste_stream_${taskId}.mp4`,
+          saveAs: false,
+          conflictAction: 'uniquify'
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            showResult('extensionResult', 
+              `❌ Falha: ${chrome.runtime.lastError.message}`, 
+              'error');
+          } else {
+            showResult('extensionResult', 
+              `✅ Download iniciado! ID: ${downloadId}`, 
+              'success');
+            
+            // Verificar se apareceu na lista
+            setTimeout(() => {
+              chrome.downloads.search({ id: downloadId }, (results) => {
+                if (results && results[0]) {
+                  log(`✅ Download confirmado: ${results[0].filename}`);
+                }
+              });
+            }, 1000);
+          }
+        });
+        
+      } catch (error) {
+        showResult('extensionResult', `❌ Erro: ${error.message}`, 'error');
+      }
+    }
+
+    async function listActiveDownloads() {
+      try {
+        const response = await fetch('http://localhost:9001/api/downloads');
+        
+        if (response.ok) {
+          const data = await response.json();
+          const downloadsDiv = document.getElementById('downloadsResult');
+          
+          if (data.downloads && data.downloads.length > 0) {
+            downloadsDiv.textContent = JSON.stringify(data.downloads, null, 2);
+            log(`Encontrados ${data.downloads.length} downloads`);
+          } else {
+            downloadsDiv.textContent = 'Nenhum download ativo encontrado';
+            log('Nenhum download ativo');
+          }
+        } else {
+          document.getElementById('downloadsResult').textContent = 
+            `Erro ${response.status}: ${await response.text()}`;
+        }
+      } catch (error) {
+        document.getElementById('downloadsResult').textContent = `Erro: ${error.message}`;
+        log(`Erro ao listar downloads: ${error.message}`);
+      }
+    }
+
+    function clearLog() {
+      document.getElementById('testLog').innerHTML = '';
+    }
+
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', () => {
+      log('🧪 Página de teste carregada');
+      log('Use os botões acima para testar o endpoint de stream');
+    });
+  </script>
+</body>
+</html>
