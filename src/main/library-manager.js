@@ -458,6 +458,7 @@ module.exports = {
   getDownloadedFiles,
   trackDownloadedFile,
   setBinaryPaths,
+  getBinaryPaths: () => binaryPaths,
   getFileById,
   // Export others if needed/useful
   findThumbnailForFile,

@@ -4,21 +4,21 @@ const defaultSettings = {
   // Basics
   outputFormat: "mp4",
   quality: "best",
-  audioFormat: "mp3",
+  audioFormat: "best",
   concurrentFragments: 8,
   embedSubs: false,
   writeInfoJson: false,
 
   // Advanced
-  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-  referer: "https://www.youtube.com/",
+  userAgent: "",
+  referer: "",
   socketTimeout: 30,
   retries: 5,
   fragmentRetries: 5,
   extractorRetries: 3,
   noCheckCertificate: true,
   ignoreErrors: true,
-  writeThumbnail: true,
+  writeThumbnail: false,
   writeDescription: false,
   showConsole: true,
 
