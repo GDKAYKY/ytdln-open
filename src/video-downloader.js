@@ -62,49 +62,77 @@ class VideoDownloader {
     }
 
     // 2. Binários e Formatos
-    // Para streaming, forçamos MP4 para evitar problemas de pipe com WebM no Windows
     const outFormat = useStdout ? "mp4" : settings.outputFormat || "mp4";
-
     args.push("--ffmpeg-location", ffmpeg, "--merge-output-format", outFormat);
 
-    // 3. Qualidade
+    // 3. Qualidade - MESMO PARA STREAMING E DOWNLOAD
     if (settings.quality && settings.quality !== "best") {
       if (settings.quality === "worst") {
         args.push("-f", "worst");
       } else {
         const height = settings.quality.replace("p", "");
-        args.push(
-          "-f",
-          `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`
-        );
+        // Para streaming, adicionar filtro de extensão MP4
+        if (useStdout) {
+          args.push(
+            "-f",
+            `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${height}][ext=mp4]/best`
+          );
+        } else {
+          args.push(
+            "-f",
+            `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`
+          );
+        }
       }
     }
 
-    // 4. Performance e Retentativa
+    // 4. Performance e Retentativa - IDÊNTICO PARA AMBOS
     args.push(
       "--concurrent-fragments",
       (settings.concurrentFragments || 8).toString()
     );
-    if (settings.socketTimeout)
-      args.push("--socket-timeout", settings.socketTimeout.toString());
-    if (settings.retries) args.push("--retries", settings.retries.toString());
-    if (settings.fragmentRetries)
-      args.push("--fragment-retries", settings.fragmentRetries.toString());
+    args.push("--socket-timeout", (settings.socketTimeout || 30).toString());
+    args.push("--retries", (settings.retries || 5).toString());
+    args.push("--fragment-retries", (settings.fragmentRetries || 5).toString());
+    
+    // Para streaming, adicionar delay para evitar bloqueios
+    if (useStdout) {
+      args.push("--sleep-requests", "0.5"); // 500ms entre requisições
+      args.push("--sleep-interval", "1"); // 1s entre fragmentos
+    }
 
-    // 5. Metadados e Subs
-    if (settings.embedSubs) args.push("--embed-subs");
-    if (settings.writeInfoJson) args.push("--write-info-json");
-    if (settings.writeDescription) args.push("--write-description");
-    args.push("--write-thumbnail");
+    // 5. Metadados e Subs (skip para streaming)
+    if (!useStdout) {
+      if (settings.embedSubs) args.push("--embed-subs");
+      if (settings.writeInfoJson) args.push("--write-info-json");
+      if (settings.writeDescription) args.push("--write-description");
+      args.push("--write-thumbnail");
+    }
 
-    // 6. Headers / Proxy
-    if (settings.userAgent) args.push("--user-agent", settings.userAgent);
+    // 6. Headers / Proxy - IDÊNTICO PARA AMBOS
+    // Para streaming, usar User-Agent de navegador real se não especificado
+    const userAgent = settings.userAgent || (useStdout 
+      ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      : "");
+    
+    if (userAgent) args.push("--user-agent", userAgent);
     if (settings.referer) args.push("--referer", settings.referer);
     if (settings.noCheckCertificate) args.push("--no-check-certificate");
+    if (settings.ignoreErrors) args.push("--ignore-errors");
+    
+    // Headers adicionais para evitar bloqueios (especialmente importante para streaming)
+    if (useStdout) {
+      // Para streaming, adicionar headers que parecem vir de um navegador real
+      args.push("--add-header", "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7");
+      args.push("--add-header", "Accept-Encoding: gzip, deflate, br");
+      args.push("--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+      args.push("--add-header", "Sec-Fetch-Dest: document");
+      args.push("--add-header", "Sec-Fetch-Mode: navigate");
+      args.push("--add-header", "Sec-Fetch-Site: none");
+      args.push("--add-header", "Upgrade-Insecure-Requests: 1");
+    }
 
-    // 7. Lógica de Post-Processing (Mesclagem de Áudio/Vídeo + Streaming)
-    // NOTA: Flags de fragmentação só são usados no método stream() diretamente,
-    // não via post-processor do yt-dlp para evitar criação de arquivos --Frag*
+    // 7. Lógica de Post-Processing (Mesclagem de Áudio/Vídeo)
     let ppArgs = [];
 
     // Conversão de áudio se solicitado
@@ -122,7 +150,6 @@ class VideoDownloader {
     }
 
     if (ppArgs.length > 0) {
-      // Passar argumentos como string corretamente formatada
       args.push("--postprocessor-args", `ffmpeg:${ppArgs.join(" ")}`);
     }
 
@@ -207,76 +234,105 @@ class VideoDownloader {
     });
 
     console.log("[Stream] Iniciando Double-Pipe: yt-dlp | ffmpeg");
+    console.log("[Stream] yt-dlp args:", ytdlpArgs);
 
-    // Usar diretório temporário para evitar criar arquivos na raiz do repo
     const tempDir = require("node:os").tmpdir();
     
     const downloader = spawn(ytdlp, ytdlpArgs, {
       stdio: ["ignore", "pipe", "pipe"],
-      cwd: tempDir, // Executar em diretório temporário
+      cwd: tempDir,
     });
 
-    // O trunfo: FFmpeg recebe o lixo do yt-dlp e cospe fMP4 limpo
     const muxer = spawn(
       ffmpeg,
       [
         "-i",
         "pipe:0",
-        "-c",
-        "copy", // Apenas move os bytes, sem processamento pesado de CPU
+        "-c:v",
+        "copy",
+        "-c:a",
+        "copy",
         "-f",
-        "mp4",
-        "-movflags",
-        "frag_keyframe+empty_moov+default_base_moof",
+        "mpegts",
         "-loglevel",
-        "error",
+        "info",
         "pipe:1",
       ],
       { 
         stdio: ["pipe", "pipe", "pipe"],
-        cwd: tempDir, // Executar em diretório temporário
+        cwd: tempDir,
       }
     );
 
-    // Encanamento
-    downloader.stdout.pipe(muxer.stdin);
-    
-    // Tratamento de erro para evitar EPIPE quando o cliente fecha a conexão
-    muxer.stdout.on("error", (err) => {
-      if (err.code !== "EPIPE") {
-        console.error("[Stream] Erro no pipe do muxer:", err);
-      }
+    // Encanamento com tratamento de erro
+    downloader.stdout.on("error", (err) => {
+      console.error("[Stream] Erro no stdout do yt-dlp:", err);
     });
-    
-    muxer.stdout.pipe(res);
 
-    // Tratamento de erro no pipe de entrada do muxer
     muxer.stdin.on("error", (err) => {
       if (err.code !== "EPIPE") {
-        console.error("[Stream] Erro no pipe de entrada do muxer:", err);
+        console.error("[Stream] Erro no stdin do ffmpeg:", err);
       }
     });
 
-    // Logs de erro para debug real
-    downloader.stderr.on("data", (d) =>
-      console.log(`[yt-dlp] ${d.toString().trim()}`)
-    );
-    muxer.stderr.on("data", (d) =>
-      console.error(`[muxer] ${d.toString().trim()}`)
-    );
+    downloader.stdout.pipe(muxer.stdin);
+    muxer.stdout.pipe(res);
+
+    // Logs detalhados
+    let ytdlpBytes = 0;
+    let ffmpegBytes = 0;
+    let ytdlpEnded = false;
+    let ffmpegEnded = false;
+
+    downloader.stdout.on("data", (chunk) => {
+      ytdlpBytes += chunk.length;
+      if (ytdlpBytes % (10 * 1024 * 1024) === 0) {
+        console.log(`[Stream] yt-dlp enviou: ${(ytdlpBytes / 1024 / 1024).toFixed(2)} MB`);
+      }
+    });
+
+    muxer.stdout.on("data", (chunk) => {
+      ffmpegBytes += chunk.length;
+      if (ffmpegBytes % (10 * 1024 * 1024) === 0) {
+        console.log(`[Stream] ffmpeg enviou: ${(ffmpegBytes / 1024 / 1024).toFixed(2)} MB`);
+      }
+    });
+
+    downloader.stderr.on("data", (d) => {
+      const msg = d.toString().trim();
+      if (msg) console.log(`[yt-dlp] ${msg}`);
+    });
+    
+    muxer.stderr.on("data", (d) => {
+      const msg = d.toString().trim();
+      if (msg) console.error(`[ffmpeg] ${msg}`);
+    });
+
+    downloader.stdout.on("end", () => {
+      ytdlpEnded = true;
+      console.log(`[Stream] yt-dlp terminou. Total: ${(ytdlpBytes / 1024 / 1024).toFixed(2)} MB`);
+    });
+
+    muxer.stdout.on("end", () => {
+      ffmpegEnded = true;
+      console.log(`[Stream] ffmpeg terminou. Total: ${(ffmpegBytes / 1024 / 1024).toFixed(2)} MB`);
+    });
 
     return new Promise((resolve, reject) => {
       let resolved = false;
       
       const cleanup = () => {
         [downloader, muxer].forEach((p) => {
-          if (p.exitCode === null) p.kill("SIGKILL");
+          if (p && p.exitCode === null) {
+            p.kill("SIGKILL");
+          }
         });
       };
       
       const handleResolve = () => {
         if (!resolved) {
           resolved = true;
+          console.log(`[Stream] Resolvido. yt-dlp: ${ytdlpEnded}, ffmpeg: ${ffmpegEnded}`);
           cleanup();
           resolve();
         }
@@ -285,8 +341,8 @@ class VideoDownloader {
       const handleReject = (err) => {
         if (!resolved) {
           resolved = true;
+          console.error(`[Stream] Rejeitado:`, err);
           cleanup();
-          // Ignorar EPIPE e ECONNRESET (cliente fechou a conexão)
           if (err && (err.code === "EPIPE" || err.code === "ECONNRESET")) {
             resolve();
           } else {
@@ -295,7 +351,6 @@ class VideoDownloader {
         }
       };
       
-      // Tratamento de erro na resposta HTTP para evitar EPIPE não capturado
       res.on("error", (err) => {
         if (err.code !== "EPIPE" && err.code !== "ECONNRESET") {
           console.error("[Stream] Erro na resposta HTTP:", err);
@@ -304,26 +359,33 @@ class VideoDownloader {
       });
       
       res.on("close", () => {
-        // Cliente fechou a conexão - isso é normal, não é um erro
+        console.log("[Stream] Cliente fechou a conexão");
         handleResolve();
       });
       
-      // Tratamento de erro nos processos filhos
       downloader.on("error", (err) => {
-        console.error("[Stream] Erro no processo yt-dlp:", err);
+        console.error("[Stream] Erro no yt-dlp:", err);
         handleReject(err);
       });
       
       muxer.on("error", (err) => {
-        console.error("[Stream] Erro no processo ffmpeg:", err);
+        console.error("[Stream] Erro no ffmpeg:", err);
         handleReject(err);
       });
       
+      downloader.on("close", (code) => {
+        console.log(`[Stream] yt-dlp fechou com código: ${code}`);
+        if (code !== 0 && code !== null) {
+          handleReject(new Error(`yt-dlp falhou com código ${code}`));
+        }
+      });
+      
       muxer.on("close", (code) => {
+        console.log(`[Stream] ffmpeg fechou com código: ${code}`);
         if (code === 0 || code === null || muxer.killed) {
           handleResolve();
         } else {
-          handleReject(new Error(`Muxer falhou com código ${code}`));
+          handleReject(new Error(`ffmpeg falhou com código ${code}`));
         }
       });
     });

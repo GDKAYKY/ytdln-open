@@ -56,10 +56,11 @@ class AppServer {
       if (streamEntry) {
         console.log(`[Server] Iniciando stream direto: ${streamEntry.name}`);
         res.writeHead(200, {
-          "Content-Type": "video/mp4", // Forçamos MP4 para streaming
+          "Content-Type": "video/mp4",
           "Content-Disposition": `attachment; filename="${encodeURIComponent(streamEntry.name)}"; filename*=UTF-8''${encodeURIComponent(streamEntry.name)}"`,
-          "Transfer-Encoding": "chunked",
-          Connection: "keep-alive",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
         });
 
         try {
