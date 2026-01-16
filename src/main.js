@@ -273,7 +273,7 @@ ipcMain.on("download-video", async (event, videoUrl) => {
     concurrentFragments: 8,
     embedSubs: false,
     writeInfoJson: false,
-    writeThumbnail: false,
+    writeThumbnail: true,
     writeDescription: false,
     userAgent: "",
     referer: "",
@@ -326,6 +326,39 @@ ipcMain.on("check-binaries-status", (event) => {
 createIpcHandler("open-downloads-folder", async () => {
   const downloadsPath = app.getPath("downloads");
   await shell.openPath(downloadsPath);
+});
+
+// Library Integrity Handlers
+const libraryIntegrity = require("./main/library-integrity");
+
+ipcMain.handle("library:check-integrity", async () => {
+  try {
+    const report = await libraryIntegrity.checkLibraryIntegrity();
+    return { success: true, data: report };
+  } catch (error) {
+    console.error("Erro ao verificar integridade:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("library:generate-report", async () => {
+  try {
+    const report = await libraryIntegrity.generateLibraryReport();
+    return { success: true, data: report };
+  } catch (error) {
+    console.error("Erro ao gerar relatório:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("library:repair", async (event, options) => {
+  try {
+    const report = await libraryIntegrity.repairLibrary(options);
+    return { success: true, data: report };
+  } catch (error) {
+    console.error("Erro ao reparar biblioteca:", error);
+    return { success: false, error: error.message };
+  }
 });
 
 createIpcHandler("get-downloaded-files", async (event, paths) => {

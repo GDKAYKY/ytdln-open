@@ -8,7 +8,7 @@ require("module").prototype.require = (function (orig) {
   };
 })(require("module").prototype.require);
 
-const VideoDownloader = require("./src/video-downloader");
+import VideoDownloader from "../src/video-downloader";
 
 function proveArguments() {
   console.log("🕵️ PROVA DE INTEGRIDADE DOS ARGUMENTOS");

@@ -791,8 +791,6 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
-  /* Removed overflow: hidden to allow glow */
-  /* Moved borders and background to .thumbnail-main */
 }
 
 .thumbnail-main {
@@ -857,11 +855,6 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(40, 167, 69, 0.15) 0%,
-    rgba(0, 0, 0, 0.6) 100%
-  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1223,19 +1216,15 @@ body {
 /* Type colors for progress bar */
 .toast-container.success .progress-fill {
   background: var(--color-bright-green);
-  box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
 }
 .toast-container.error .progress-fill {
   background: #ff6b6b;
-  box-shadow: 0 0 8px rgba(255, 107, 107, 0.5);
 }
 .toast-container.info .progress-fill {
   background: #4a9eff;
-  box-shadow: 0 0 8px rgba(74, 158, 255, 0.5);
 }
 .toast-container.warning .progress-fill {
   background: #ffa500;
-  box-shadow: 0 0 8px rgba(255, 165, 0, 0.5);
 }
 
 /* SVG Icon Coloring */
@@ -2606,29 +2595,14 @@ body {
 }
 
 .delete-popup-btn-delete {
-  background: linear-gradient(
-    135deg,
-    rgba(239, 68, 68, 0.9) 0%,
-    rgba(220, 38, 38, 0.9) 100%
-  );
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: #ff3131;
   color: #ffffff;
-  box-shadow:
-    0 4px 12px rgba(239, 68, 68, 0.25),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 }
 
 .delete-popup-btn-delete:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(239, 68, 68, 1) 0%,
-    rgba(220, 38, 38, 1) 100%
-  );
+  background: #ff3131;
   border-color: rgba(239, 68, 68, 0.5);
   transform: translateY(-2px);
-  box-shadow:
-    0 6px 20px rgba(239, 68, 68, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.15) inset;
 }
 
 .delete-popup-btn-delete:hover svg {
@@ -2637,9 +2611,6 @@ body {
 
 .delete-popup-btn-delete:active {
   transform: translateY(0);
-  box-shadow:
-    0 2px 8px rgba(239, 68, 68, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 }
 
 /* Keyboard focus states */

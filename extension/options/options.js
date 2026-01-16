@@ -16,7 +16,7 @@ const defaultSettings = {
   extractorRetries: 3,
   noCheckCertificate: true,
   ignoreErrors: true,
-  writeThumbnail: false,
+  writeThumbnail: true,
   writeDescription: false,
   showConsole: true,
 

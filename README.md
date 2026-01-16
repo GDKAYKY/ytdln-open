@@ -31,11 +31,11 @@
 <div align="center">
 
 [![GitHub Releases](https://custom-icon-badges.herokuapp.com/badge/Download-blue?style=for-the-badge&logo=download&logoColor=white)](https://github.com/GDKAYKY/ytdln-open/releases/latest)
-[![GitHub](https://custom-icon-badges.herokuapp.com/badge/GitHub-black?style=for-the-badge&logo=github&logoColor=white)](https://github.com/yourusername/ytdln-open)
+[![GitHub](https://custom-icon-badges.herokuapp.com/badge/GitHub-black?style=for-the-badge&logo=github&logoColor=white)](https://github.com/GDKAYKY/ytdln-open)
 
-[![Latest release](https://img.shields.io/github/release/GDKAYKY/ytdln-open.svg?maxAge=3600&include_prereleases&label=latest)](https://github.com/yourusername/ytdln-open/releases) 
+[![Latest release](https://img.shields.io/github/release/GDKAYKY/ytdln-open.svg?maxAge=3600&include_prereleases&label=latest)](https://github.com/GDKAYKY/ytdln-open/releases) 
 [![Downloads](https://img.shields.io/github/downloads/GDKAYKY/ytdln-open/total?style=flat-square)](https://github.com/GDKAYKY/ytdln-open/releases) 
-[![License](https://img.shields.io/github/license/GDKAYKY/ytdln-open?style=flat-square)](https://github.com/yourusername/ytdln-open/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/GDKAYKY/ytdln-open?style=flat-square)](https://github.com/GDKAYKY/ytdln-open/blob/main/LICENSE)
 
 ### Only the links above are the only trusted sources of YTDLN-OPEN. Everything else is not related to us.
 
@@ -75,7 +75,7 @@
 ## 🚀 Installation
 
 ### Download from Releases
-1. Go to the [Releases page](https://github.com/yourusername/ytdln-open/releases/latest)
+1. Go to the [Releases page](https://github.com/GDKAYKY/ytdln-open/releases/latest)
 2. Download the installer for your operating system:
    - **Windows**: `YTDLN-OPEN-Setup-x.x.x.exe`
    - **macOS**: `YTDLN-OPEN-x.x.x.dmg`
@@ -96,7 +96,7 @@ npm start
 
 ## 📄 License
 
-[GNU GPL v3.0](https://github.com/yourusername/ytdln-open/blob/main/LICENSE)
+[GNU GPL v3.0](https://github.com/GDKAYKY/ytdln-open/blob/main/LICENSE)
 
 Except for the source code licensed under the GPLv3 license, all other parties are prohibited from using the "YTDLN-OPEN" name as a downloader app, and the same is true for its derivatives. Derivatives include but are not limited to forks and unofficial builds.
 

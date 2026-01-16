@@ -1,5 +1,7 @@
-const downloadList = document.getElementById("downloads-list");
-const downloadsContainer = document.getElementById("downloads-container");
+const downloadsList = document.getElementById("downloadsList");
+const downloadsContainer = document.getElementById("downloadsContainer");
+const urlInput = document.getElementById("urlInput");
+const downloadBtn = document.getElementById("downloadBtn");
 
 // Solicita o estado inicial ao abrir o popup
 chrome.runtime.sendMessage({ action: "get_queue_state" }, (response) => {
@@ -25,19 +27,18 @@ function updateUI(queue) {
   );
 
   if (activeJobs.length === 0) {
-    downloadsContainer.style.display = "none";
+    downloadsContainer.classList.remove("active");
     return;
   }
 
-  downloadsContainer.style.display = "block";
-  downloadList.innerHTML = "";
+  downloadsContainer.classList.add("active");
+  downloadsList.innerHTML = "";
 
   activeJobs.forEach((job) => {
     const item = document.createElement("div");
     item.className = "job-item";
     item.id = `job-${job.id}`;
 
-    // Tenta limpar a URL para mostrar algo melhor que o link completo se não tiver título
     const displayTitle =
       job.title || job.url.split("v=")[1]?.split("&")[0] || "Download...";
 
@@ -51,7 +52,7 @@ function updateUI(queue) {
         <span class="job-percentage">${Math.floor(job.progress || 0)}%</span>
       </div>
     `;
-    downloadList.appendChild(item);
+    downloadsList.appendChild(item);
   });
 }
 
@@ -68,17 +69,23 @@ function updateJobProgress(data) {
   }
 }
 
-document.getElementById("downloadBtn").addEventListener("click", async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+downloadBtn.addEventListener("click", async () => {
+  let url = urlInput.value.trim();
 
-  if (tab && tab.url) {
+  if (!url) {
+    // Se não tiver URL no input, pega da aba ativa
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    url = tab?.url;
+  }
+
+  if (url) {
     chrome.runtime.sendMessage(
       {
         action: "openApp",
-        url: tab.url,
+        url: url,
       },
       (response) => {
-        // window.close(); // Opcional: manter aberto para ver o progresso iniciar
+        urlInput.value = "";
       }
     );
   }

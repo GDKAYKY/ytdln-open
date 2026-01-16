@@ -1,5 +1,6 @@
 const { app } = require("electron");
 const path = require("node:path");
+const os = require("node:os");
 const { spawn } = require("node:child_process");
 const BinaryDownloader = require("./bin-downloader");
 
@@ -20,12 +21,17 @@ class VideoDownloader {
       const infoArgs = ["--dump-json", videoUrl];
       const ytdlpProcess = spawn(ytdlp, infoArgs, {
         stdio: ["ignore", "pipe", "pipe"],
-        cwd: app.getPath("downloads"), // Executar no diretório de downloads
+        // Não definir cwd para evitar problemas com caminhos relativos
       });
       let infoJson = "";
 
       ytdlpProcess.stdout.on("data", (data) => {
         infoJson += data.toString();
+      });
+
+      ytdlpProcess.on("error", (err) => {
+        console.error("Error spawning yt-dlp:", err);
+        resolve(null);
       });
 
       ytdlpProcess.on("close", (code) => {
@@ -106,7 +112,13 @@ class VideoDownloader {
       if (settings.embedSubs) args.push("--embed-subs");
       if (settings.writeInfoJson) args.push("--write-info-json");
       if (settings.writeDescription) args.push("--write-description");
+      // SEMPRE salvar thumbnail (será movida para cache depois)
       args.push("--write-thumbnail");
+    } else {
+      // Para streaming, salvar thumbnail em diretório temporário
+      args.push("--write-thumbnail");
+      // Usar -P (alias de --paths) para especificar o diretório temporário
+      args.push("-P", `thumbnail:${os.tmpdir()}`);
     }
 
     // 6. Headers / Proxy - IDÊNTICO PARA AMBOS
@@ -184,7 +196,7 @@ class VideoDownloader {
     return new Promise((resolve, reject) => {
       const process = spawn(ytdlp, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        cwd: app.getPath("downloads"), // Executar no diretório de downloads
+        // Não definir cwd para evitar problemas com caminhos relativos
       });
 
       // Necessário para o QueueManager conseguir cancelar o processo
@@ -235,12 +247,10 @@ class VideoDownloader {
 
     console.log("[Stream] Iniciando Double-Pipe: yt-dlp | ffmpeg");
     console.log("[Stream] yt-dlp args:", ytdlpArgs);
-
-    const tempDir = require("node:os").tmpdir();
     
     const downloader = spawn(ytdlp, ytdlpArgs, {
       stdio: ["ignore", "pipe", "pipe"],
-      cwd: tempDir,
+      // Não definir cwd para evitar problemas com caminhos relativos
     });
 
     const muxer = spawn(
@@ -260,9 +270,18 @@ class VideoDownloader {
       ],
       { 
         stdio: ["pipe", "pipe", "pipe"],
-        cwd: tempDir,
+        // Não definir cwd para evitar problemas com caminhos relativos
       }
     );
+
+    // Tratamento de erro de spawn
+    downloader.on("error", (err) => {
+      console.error("[Stream] Erro no yt-dlp:", err);
+    });
+
+    muxer.on("error", (err) => {
+      console.error("[Stream] Erro no ffmpeg:", err);
+    });
 
     // Encanamento com tratamento de erro
     downloader.stdout.on("error", (err) => {
