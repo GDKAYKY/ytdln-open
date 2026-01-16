@@ -8,7 +8,7 @@ require("module").prototype.require = (function (orig) {
   };
 })(require("module").prototype.require);
 
-const VideoDownloader = require("./src/video-downloader");
+const VideoDownloader = require("../src/video-downloader");
 const path = require("node:path");
 
 function testArguments() {
@@ -24,7 +24,7 @@ function testArguments() {
     concurrentFragments: 8,
     embedSubs: false,
     writeInfoJson: false,
-    writeThumbnail: false,
+    writeThumbnail: true,
     writeDescription: false,
     userAgent: "",
     referer: "",

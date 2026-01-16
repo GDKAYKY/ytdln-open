@@ -2,13 +2,13 @@
 require("module").prototype.require = (function (orig) {
   return function (name) {
     if (name === "electron") {
-      return { app: { getPath: (n) => `C:\\Downloads\\${n}` } };
+      return { app: { getPath: (n) => `C:\\Users\\${process.env.USERNAME}\\Downloads` } };
     }
     return orig.apply(this, arguments);
   };
 })(require("module").prototype.require);
 
-const VideoDownloader = require("./src/video-downloader");
+const VideoDownloader = require("../src/video-downloader");
 const path = require("node:path");
 const fs = require("node:fs");
 const { createWriteStream, Writable } = require("node:fs");
@@ -26,7 +26,7 @@ async function testExtensionFlow() {
     concurrentFragments: 8,
     embedSubs: false,
     writeInfoJson: false,
-    writeThumbnail: false,
+    writeThumbnail: true,
     writeDescription: false,
     userAgent: "",
     referer: "",
@@ -45,8 +45,8 @@ async function testExtensionFlow() {
     console.log("📦 Configurando binários...");
     // Usar binários locais diretamente sem init()
     downloader.binaries = {
-      ytdlp: path.resolve(__dirname, "bin", "yt-dlp.exe"),
-      ffmpeg: path.resolve(__dirname, "bin", "ffmpeg.exe"),
+      ytdlp: path.resolve(__dirname, "..", "bin", "yt-dlp.exe"),
+      ffmpeg: path.resolve(__dirname, "..", "bin", "ffmpeg.exe"),
     };
     console.log("✅ Binários configurados");
     console.log(`   yt-dlp: ${downloader.binaries.ytdlp}`);

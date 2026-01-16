@@ -8,7 +8,7 @@ require("module").prototype.require = (function (orig) {
   };
 })(require("module").prototype.require);
 
-const VideoDownloader = require("./src/video-downloader");
+const VideoDownloader = require("../src/video-downloader");
 
 function showCommand() {
   console.log("🎬 COMANDO QUE SERÁ EXECUTADO");
@@ -22,7 +22,7 @@ function showCommand() {
     concurrentFragments: 8,
     embedSubs: false,
     writeInfoJson: false,
-    writeThumbnail: false,
+    writeThumbnail: true,
     writeDescription: false,
     userAgent: "",
     referer: "",

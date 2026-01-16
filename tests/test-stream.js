@@ -2,13 +2,13 @@
 require("module").prototype.require = (function (orig) {
   return function (name) {
     if (name === "electron") {
-      return { app: { getPath: (n) => `C:\\Downloads\\${n}` } };
+      return { app: { getPath: (n) => `C:\\Users\\${process.env.USERNAME}\\Downloads` } };
     }
     return orig.apply(this, arguments);
   };
 })(require("module").prototype.require);
 
-const VideoDownloader = require("./src/video-downloader");
+const VideoDownloader = require("../src/video-downloader");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -25,7 +25,7 @@ async function testStreamDownload() {
     concurrentFragments: 8,
     embedSubs: false,
     writeInfoJson: false,
-    writeThumbnail: false,
+    writeThumbnail: true,
     writeDescription: false,
     userAgent: "",
     referer: "",
@@ -43,8 +43,8 @@ async function testStreamDownload() {
     
     console.log("📦 Inicializando binários...");
     // Usar binários locais diretamente com caminhos normalizados
-    const ytdlpPath = path.resolve(__dirname, "bin", "yt-dlp.exe");
-    const ffmpegPath = path.resolve(__dirname, "bin", "ffmpeg.exe");
+    const ytdlpPath = path.resolve(__dirname, "..", "bin", "yt-dlp.exe");
+    const ffmpegPath = path.resolve(__dirname, "..", "bin", "ffmpeg.exe");
     
     downloader.binaries = {
       ytdlp: ytdlpPath,
@@ -95,8 +95,23 @@ async function testStreamDownload() {
       end: function() {
         console.log("✅ Resposta finalizada");
       },
+      destroy: function(err) {
+        if (err) {
+          console.error("❌ Resposta destruída com erro:", err.message);
+        } else {
+          console.log("✅ Resposta destruída");
+        }
+      },
       on: function(event, callback) {
         // Mock de eventos
+        if (event === "error") {
+          this._errorHandler = callback;
+        } else if (event === "close") {
+          this._closeHandler = callback;
+        }
+      },
+      once: function(event, callback) {
+        // Mock de eventos únicos
         if (event === "error") {
           this._errorHandler = callback;
         } else if (event === "close") {

@@ -2,6 +2,7 @@ const { app } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const fsPromises = require("node:fs/promises");
+const os = require("node:os");
 const crypto = require("node:crypto");
 const { execFileSync, execFile } = require("node:child_process");
 
@@ -93,8 +94,19 @@ async function findThumbnailForFile(videoFilePath) {
 
     const imageExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
+    // Procurar no diretório do vídeo
     for (const imgExt of imageExtensions) {
       const thumbPath = path.join(dir, baseName + imgExt);
+      if (fs.existsSync(thumbPath)) {
+        return thumbPath;
+      }
+    }
+
+    // Se não encontrou no diretório do vídeo, procurar no diretório temporário
+    // (para streams que salvam thumbnail em temp)
+    const tempDir = os.tmpdir();
+    for (const imgExt of imageExtensions) {
+      const thumbPath = path.join(tempDir, baseName + imgExt);
       if (fs.existsSync(thumbPath)) {
         return thumbPath;
       }
@@ -408,15 +420,15 @@ async function trackDownloadedFile(
             cachePathBase.substring(0, cachePathBase.lastIndexOf(".")) +
             thumbExt;
 
+          // SEMPRE copiar para o cache (independente de writeThumbnailToDownload)
           await fsPromises.copyFile(originalThumbPath, libraryThumbPath);
           thumbnailPath = libraryThumbPath;
 
-          if (!settings.writeThumbnail) {
-            try {
-              await fsPromises.unlink(originalThumbPath);
-            } catch (e) {
-              console.error("Erro ao deletar thumbnail original:", e);
-            }
+          // Deletar do downloads SEMPRE (a cópia no cache é o que importa)
+          try {
+            await fsPromises.unlink(originalThumbPath);
+          } catch (e) {
+            console.error("Erro ao deletar thumbnail original:", e);
           }
         } catch (e) {
           console.error("Erro ao processar thumbnail da biblioteca:", e);
@@ -460,8 +472,8 @@ module.exports = {
   setBinaryPaths,
   getBinaryPaths: () => binaryPaths,
   getFileById,
-  // Export others if needed/useful
   findThumbnailForFile,
+  getCachedThumbnailPath,
   extractThumbnail,
   mergeThumbnailIntoVideo,
 };
