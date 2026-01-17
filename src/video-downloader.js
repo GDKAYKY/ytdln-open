@@ -69,7 +69,10 @@ class VideoDownloader {
 
     // 2. Binários e Formatos
     const outFormat = useStdout ? "mp4" : settings.outputFormat || "mp4";
-    args.push("--ffmpeg-location", ffmpeg, "--merge-output-format", outFormat);
+    // Only pass ffmpeg location when NOT using stdout (stdout doesn't use ffmpeg for merging)
+    if (!useStdout) {
+      args.push("--ffmpeg-location", ffmpeg, "--merge-output-format", outFormat);
+    }
 
     // 3. Qualidade - MESMO PARA STREAMING E DOWNLOAD
     if (settings.quality && settings.quality !== "best") {
@@ -92,6 +95,9 @@ class VideoDownloader {
       }
     }
 
+    // 3.5 JavaScript Runtime - usar Node.js do Electron
+    args.push("--js-runtime", "nodejs");
+
     // 4. Performance e Retentativa - IDÊNTICO PARA AMBOS
     args.push(
       "--concurrent-fragments",
@@ -99,12 +105,14 @@ class VideoDownloader {
     );
     args.push("--socket-timeout", (settings.socketTimeout || 30).toString());
     args.push("--retries", (settings.retries || 5).toString());
-    args.push("--fragment-retries", (settings.fragmentRetries || 5).toString());
+    args.push("--fragment-retries", (settings.fragmentRetries || 10).toString());
+    args.push("--skip-unavailable-fragments"); // Skip fragments that can't be downloaded
     
     // Para streaming, adicionar delay para evitar bloqueios
     if (useStdout) {
       args.push("--sleep-requests", "0.5"); // 500ms entre requisições
       args.push("--sleep-interval", "1"); // 1s entre fragmentos
+      args.push("--no-part"); // Não usar arquivo .part para stdout
     }
 
     // 5. Metadados e Subs (skip para streaming)
@@ -114,35 +122,25 @@ class VideoDownloader {
       if (settings.writeDescription) args.push("--write-description");
       // SEMPRE salvar thumbnail (será movida para cache depois)
       args.push("--write-thumbnail");
-    } else {
-      // Para streaming, salvar thumbnail em diretório temporário
-      args.push("--write-thumbnail");
-      // Usar -P (alias de --paths) para especificar o diretório temporário
-      args.push("-P", `thumbnail:${os.tmpdir()}`);
     }
 
     // 6. Headers / Proxy - IDÊNTICO PARA AMBOS
-    // Para streaming, usar User-Agent de navegador real se não especificado
-    const userAgent = settings.userAgent || (useStdout 
-      ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      : "");
+    // Usar User-Agent de navegador real
+    const userAgent = settings.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     
-    if (userAgent) args.push("--user-agent", userAgent);
+    args.push("--user-agent", userAgent);
     if (settings.referer) args.push("--referer", settings.referer);
     if (settings.noCheckCertificate) args.push("--no-check-certificate");
     if (settings.ignoreErrors) args.push("--ignore-errors");
     
-    // Headers adicionais para evitar bloqueios (especialmente importante para streaming)
-    if (useStdout) {
-      // Para streaming, adicionar headers que parecem vir de um navegador real
-      args.push("--add-header", "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7");
-      args.push("--add-header", "Accept-Encoding: gzip, deflate, br");
-      args.push("--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
-      args.push("--add-header", "Sec-Fetch-Dest: document");
-      args.push("--add-header", "Sec-Fetch-Mode: navigate");
-      args.push("--add-header", "Sec-Fetch-Site: none");
-      args.push("--add-header", "Upgrade-Insecure-Requests: 1");
-    }
+    // Headers adicionais para evitar bloqueios (importante para ambos download e streaming)
+    args.push("--add-header", "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7");
+    args.push("--add-header", "Accept-Encoding: gzip, deflate, br");
+    args.push("--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+    args.push("--add-header", "Sec-Fetch-Dest: document");
+    args.push("--add-header", "Sec-Fetch-Mode: navigate");
+    args.push("--add-header", "Sec-Fetch-Site: none");
+    args.push("--add-header", "Upgrade-Insecure-Requests: 1");
 
     // 7. Lógica de Post-Processing (Mesclagem de Áudio/Vídeo)
     let ppArgs = [];
@@ -216,6 +214,10 @@ class VideoDownloader {
 
         const fixupMatch = str.match(/\[Fixup.+\] Saving .* to "(.+)"/);
         if (fixupMatch) detectedPath = fixupMatch[1].trim();
+
+        // Match "has already been downloaded" pattern
+        const alreadyMatch = str.match(/\[download\] (.+\.mp4) has already been downloaded/);
+        if (alreadyMatch) detectedPath = alreadyMatch[1].trim();
       });
 
       process.stderr.on("data", (data) => {

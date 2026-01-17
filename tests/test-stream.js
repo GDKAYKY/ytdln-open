@@ -16,7 +16,7 @@ async function testStreamDownload() {
   console.log("🧪 TESTE DE STREAMING - Simulando extensão");
   console.log("================================================\n");
 
-  const videoUrl = "https://youtu.be/taP0wP-mHZ4";
+  const videoUrl = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
   
   // Configurações que a extensão enviaria (padrão do app)
   const extensionSettings = {
