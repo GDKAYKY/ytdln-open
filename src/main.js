@@ -23,7 +23,13 @@ const fs = require("node:fs");
 const fsPromises = require("node:fs/promises");
 const crypto = require("node:crypto");
 
-// Registro do protocolo customizado para Deep Linking
+// ============================================================================
+// PROTOCOL REGISTRATION (MUST be before app.whenReady())
+// ============================================================================
+// Register custom protocols as privileged for security and functionality
+// Will be executed in the main async block
+
+// Register custom protocol for Deep Linking
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient("ytdln-open", process.execPath, [
@@ -36,58 +42,79 @@ if (process.defaultApp) {
 
 let mainWindow = null;
 
-// Garante que apenas uma instância do app esteja rodando
+// Ensure only one instance of the app is running
 const gotTheLock = app.requestSingleInstanceLock();
 
-if (!gotTheLock) {
-  app.quit();
-} else {
+if (gotTheLock) {
   app.on("second-instance", (event, commandLine) => {
-    // O comando vem como um array, a URL do protocolo costuma ser o último item
-    const url = commandLine.find((arg) => arg.startsWith("ytdln-open://"));
-    if (url) {
-      handleDeepLink(url);
-    }
-
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    // Command comes as an array, protocol URL is usually the last item
+    const deepLinkUrl = commandLine.find((arg) =>
+      arg.startsWith("ytdln-open://")
+    );
+    if (deepLinkUrl) {
+      // Process deep link silently without bringing window to front
+      handleDeepLink(deepLinkUrl);
     }
   });
+} else {
+  app.quit();
 }
 
 function handleDeepLink(urlStr) {
   try {
+    console.log(`[DeepLink] Received deep link, length: ${urlStr.length}`);
+    
+    // Validate URL size (Windows limit is ~32KB, but we allow up to 3500 for safety)
+    if (urlStr.length > 3500) {
+      console.error(`[DeepLink] URL exceeds maximum allowed size (${urlStr.length} > 3500 chars)`);
+      return;
+    }
+
+    console.log("[DeepLink] URL size valid, parsing...");
     const parsedUrl = new URL(urlStr);
-    // Exemplo: ytdln-open://download?url=https://youtube.com/watch?v=...&settings=ey...
+    
+    // Example: ytdln-open://download?url=https://youtube.com/watch?v=...&settings=ey...
     const videoUrl = parsedUrl.searchParams.get("url");
     const settingsStr = parsedUrl.searchParams.get("settings");
+    
+    console.log(`[DeepLink] Video URL: ${videoUrl ? "present" : "missing"}`);
+    console.log(`[DeepLink] Settings: ${settingsStr ? "present" : "missing"}`);
+    
     let externalSettings = null;
 
     if (settingsStr) {
       try {
         const decoded = Buffer.from(settingsStr, "base64").toString("utf8");
         externalSettings = JSON.parse(decoded);
+        console.log("[DeepLink] Settings decoded successfully");
       } catch (e) {
-        console.error("Erro ao decodificar configurações externas:", e);
+        console.error("[DeepLink] Error decoding external settings:", e);
       }
     }
 
-    if (videoUrl && mainWindow) {
+    if (videoUrl) {
       let cleanVideoUrl = videoUrl;
       // Sanitize blob URLs coming from older extension versions or edge cases
       if (cleanVideoUrl.startsWith("blob:")) {
-        const match = cleanVideoUrl.match(/blob:(https?:\/\/.+)/);
+        const match = new RegExp(/blob:(https?:\/\/.+)/).exec(cleanVideoUrl);
         if (match) cleanVideoUrl = match[1];
       }
 
-      mainWindow.webContents.send("external-download-request", {
+      // For extension requests, use streaming mode (PREPARE_NATIVE_DOWNLOAD)
+      // This will prepare a stream and return a downloadId for the browser
+      console.log(`[DeepLink] Preparing native stream for extension with URL: ${cleanVideoUrl}`);
+      
+      // Call server directly to prepare the stream
+      // Pass the stored WebSocket connection so extension gets notified
+      server.handleNativeDownloadFlow({
         url: cleanVideoUrl,
         settings: externalSettings,
-      });
+      }, server.extensionWs);
+    } else {
+      console.warn(`[DeepLink] Cannot process: videoUrl is missing`);
     }
   } catch (e) {
-    console.error("Erro ao processar Deep Link:", e);
+    console.error("[DeepLink] Error processing deep link:", e);
   }
 }
 
@@ -119,12 +146,33 @@ const ALLOWED_IPC_CHANNELS = new Set([
 // VALIDATION UTILITIES
 // ============================================================================
 
+/**
+ * Validates if the IPC sender is trusted (comes from the app's main window)
+ * Prevents malicious iframes or external content from using IPC channels
+ * @param {IpcMainEvent} event - IPC event
+ * @returns {boolean} true if sender is trusted
+ */
+function validateIpcSender(event) {
+  try {
+    const senderUrl = event.sender.getURL();
+    // Accept app URLs (file:// or app://)
+    if (senderUrl.startsWith("file://") || senderUrl.startsWith("app://")) {
+      return true;
+    }
+    console.warn(`Unauthorized IPC sender: ${senderUrl}`);
+    return false;
+  } catch (error) {
+    console.error("Error validating IPC sender:", error);
+    return false;
+  }
+}
+
 function isValidUrl(url) {
   try {
     const urlObj = new URL(url);
     return ["http:", "https:"].includes(urlObj.protocol);
   } catch {
-    throw new Error("URL inválida");
+    throw new Error("Invalid URL");
   }
 }
 
@@ -139,7 +187,7 @@ function sanitizeArgs(args) {
 
 function validateIpcChannel(channel) {
   if (!ALLOWED_IPC_CHANNELS.has(channel)) {
-    throw new Error(`Canal IPC não permitido: ${channel}`);
+    throw new Error(`IPC channel not allowed: ${channel}`);
   }
 }
 
@@ -155,7 +203,7 @@ function safeExecFile(command, args = [], options = {}) {
     });
     return result.trim();
   } catch (error) {
-    console.error(`Erro ao executar comando: ${command}`, error);
+    console.error(`Error executing command: ${command}`, error);
     return null;
   }
 }
@@ -176,11 +224,10 @@ function findSystemBinary(binaryName) {
 // BINARY MANAGEMENT
 // ============================================================================
 
-// binaryDownloader removed as it was unused and uninitialized
+// videoDownloader and binaryPaths initialized in app lifecycle
 let videoDownloader = null;
 let binaryPaths = null;
 
-// INICIO
 async function initializeBinaries() {
   try {
     videoDownloader = new VideoDownloader();
@@ -188,27 +235,27 @@ async function initializeBinaries() {
     binaryPaths = videoDownloader.binaries;
     libraryManager.setBinaryPaths(binaryPaths);
 
-    console.log("✓ Binários inicializados e validados:", binaryPaths);
-    return binaryPaths; // Retorna os caminhos baixados
+    console.log("✓ Binaries initialized and validated:", binaryPaths);
+    return binaryPaths; // Return downloaded paths
   } catch (error) {
-    console.error("Erro ao inicializar binários (Tentando Fallback):", error);
+    console.error("Error initializing binaries (Attempting Fallback):", error);
 
-    // Tentar usar binários do sistema como fallback
+    // Try to use system binaries as fallback
     const fallbackPaths = {
       ytdlp: findSystemBinary("yt-dlp"),
       ffmpeg: findSystemBinary("ffmpeg"),
     };
 
     if (fallbackPaths.ytdlp && fallbackPaths.ffmpeg) {
-      console.log("Usando binários do sistema como fallback");
+      console.log("Using system binaries as fallback");
 
-      binaryPaths = fallbackPaths; // Atualiza a variável global
+      binaryPaths = fallbackPaths; // Update global variable
       libraryManager.setBinaryPaths(fallbackPaths);
 
-      return fallbackPaths; // Retorna os caminhos do sistema
+      return fallbackPaths; // Return system paths
     }
 
-    // Se o fallback falhar, lança o erro.
+    // If fallback fails, throw the error
     throw error;
   }
 }
@@ -219,13 +266,13 @@ async function initializeBinaries() {
 
 function validateVideoUrlOrNotify(event, videoUrl) {
   if (!videoUrl || typeof videoUrl !== "string") {
-    event.sender.send("download-error", "URL do vídeo é obrigatória.");
+    event.sender.send("download-error", "Video URL is required.");
     return false;
   }
   if (!isValidUrl(videoUrl)) {
     event.sender.send(
       "download-error",
-      "URL inválida ou domínio não suportado."
+      "Invalid URL or unsupported domain."
     );
     return false;
   }
@@ -237,69 +284,56 @@ function validateVideoUrlOrNotify(event, videoUrl) {
 // ============================================================================
 
 /**
- * Cria um handler IPC com tratamento de erro e validação padronizados
- * @param {string} channel - Nome do canal IPC
- * @param {Function} handler - Função handler (pode ser async)
+ * Creates an IPC handler with standardized error handling, sender validation, and channel validation
+ * @param {string} channel - IPC channel name
+ * @param {Function} handler - Handler function (can be async)
  */
 function createIpcHandler(channel, handler) {
   ipcMain.on(channel, async (event, ...args) => {
     try {
+      // Validate sender first (critical security)
+      if (!validateIpcSender(event)) {
+        throw new Error("Unauthorized IPC sender");
+      }
+
+      // Validate channel
       validateIpcChannel(channel);
+
+      // Execute handler
       await handler(event, ...args);
     } catch (error) {
-      console.error(`Erro no canal '${channel}':`, error);
+      console.error(`Error on channel '${channel}':`, error);
       event.sender.send(
         "download-error",
-        error.message || "Erro interno desconhecido"
+        error.message || "Unknown internal error"
       );
     }
   });
 }
 
-// INICIO
+// START - Extension streaming only
 createIpcHandler(
   "download-video-with-settings",
   async (event, videoUrl, settings) => {
-    if (!validateVideoUrlOrNotify(event, videoUrl)) return;
-    ipcMain.emit("queue:add", event, { url: videoUrl, settings });
+    console.log("[IPC] download-video-with-settings received (not used in native mode)");
   }
 );
-// FIM
+// END
 
-ipcMain.on("download-video", async (event, videoUrl) => {
-  const defaultSettings = {
-    outputFormat: "mp4",
-    quality: "best",
-    concurrentFragments: 8,
-    embedSubs: false,
-    writeInfoJson: false,
-    writeThumbnail: true,
-    writeDescription: false,
-    userAgent: "",
-    referer: "",
-    socketTimeout: 30,
-    retries: 5,
-    fragmentRetries: 5,
-    extractorRetries: 3,
-    noCheckCertificate: true,
-    ignoreErrors: true,
-    audioFormat: "best",
-  };
-
-  // Redireciona para a fila em vez de baixar direto
-  ipcMain.emit("queue:add", event, {
-    url: videoUrl,
-    settings: defaultSettings,
-  });
+createIpcHandler("download-video", async (event, videoUrl) => {
+  console.log("[IPC] download-video received (not used in native mode)");
 });
 
 ipcMain.on("check-binaries-status", (event) => {
   try {
+    // Validate sender
+    if (!validateIpcSender(event)) {
+      throw new Error("Unauthorized IPC sender");
+    }
+
     validateIpcChannel("check-binaries-status");
 
     if (binaryPaths) {
-      // Fix: Not using binaryDownloader as it is null/unused.
-      // Using standard appMode default as portable/installed distinction logic isn't present in BinaryDownloader.
       const appMode = "standard";
       event.sender.send("binaries-status", {
         status: "ready",
@@ -311,14 +345,14 @@ ipcMain.on("check-binaries-status", (event) => {
     } else {
       event.sender.send("binaries-status", {
         status: "not-ready",
-        message: "Binários ainda não foram inicializados",
+        message: "Binaries have not been initialized yet",
       });
     }
   } catch (error) {
-    console.error("Erro ao verificar status dos binários:", error);
+    console.error("Error checking binaries status:", error);
     event.sender.send("binaries-status", {
       status: "error",
-      message: `Erro interno: ${error.message} \n ${error.stack}`,
+      message: `Internal error: ${error.message} \n ${error.stack}`,
     });
   }
 });
@@ -336,7 +370,7 @@ ipcMain.handle("library:check-integrity", async () => {
     const report = await libraryIntegrity.checkLibraryIntegrity();
     return { success: true, data: report };
   } catch (error) {
-    console.error("Erro ao verificar integridade:", error);
+    console.error("Error checking integrity:", error);
     return { success: false, error: error.message };
   }
 });
@@ -346,7 +380,7 @@ ipcMain.handle("library:generate-report", async () => {
     const report = await libraryIntegrity.generateLibraryReport();
     return { success: true, data: report };
   } catch (error) {
-    console.error("Erro ao gerar relatório:", error);
+    console.error("Error generating report:", error);
     return { success: false, error: error.message };
   }
 });
@@ -356,7 +390,7 @@ ipcMain.handle("library:repair", async (event, options) => {
     const report = await libraryIntegrity.repairLibrary(options);
     return { success: true, data: report };
   } catch (error) {
-    console.error("Erro ao reparar biblioteca:", error);
+    console.error("Error repairing library:", error);
     return { success: false, error: error.message };
   }
 });
@@ -379,33 +413,50 @@ createIpcHandler("get-downloaded-files", async (event, paths) => {
   event.sender.send("downloaded-files-list", safeFiles);
 });
 
-createIpcHandler("delete-downloaded-file", (event, fileId) => {
+createIpcHandler("delete-downloaded-file", async (event, fileId) => {
   const file = libraryManager.getFileById(fileId);
 
-  if (file?.filePath && fs.existsSync(file.filePath)) {
-    fs.unlinkSync(file.filePath);
+  if (file?.filePath) {
+    try {
+      await fsPromises.access(file.filePath);
+      await fsPromises.unlink(file.filePath);
+    } catch (error) {
+      console.warn(`File not found when deleting: ${file.filePath}`);
+    }
   }
 
   libraryManager.removeDownloadedFile(fileId);
   event.sender.send("file-deleted", fileId);
 });
 
-createIpcHandler("open-file-location", (event, fileId) => {
+createIpcHandler("open-file-location", async (event, fileId) => {
   const file = libraryManager.getFileById(fileId);
   const filePath = file?.filePath;
 
-  if (filePath && fs.existsSync(filePath)) {
-    shell.showItemInFolder(file.filePath);
+  if (filePath) {
+    try {
+      await fsPromises.access(filePath);
+      shell.showItemInFolder(filePath);
+    } catch (error) {
+      throw new Error("File not found.");
+    }
   } else {
-    throw new Error("Arquivo não encontrado.");
+    throw new Error("File not found.");
   }
 });
 
-createIpcHandler("open-video-file", (event, fileId) => {
+createIpcHandler("open-video-file", async (event, fileId) => {
   const file = libraryManager.getFileById(fileId);
 
-  if (file?.filePath && fs.existsSync(file.filePath)) {
-    shell.openPath(file.filePath);
+  if (file?.filePath) {
+    try {
+      await fsPromises.access(file.filePath);
+      await shell.openPath(file.filePath);
+    } catch (error) {
+      throw new Error("File not found.");
+    }
+  } else {
+    throw new Error("File not found.");
   }
 });
 
@@ -419,8 +470,14 @@ createIpcHandler("select-folder", async (event, type) => {
 });
 
 createIpcHandler("open-specific-folder", async (event, folderPath) => {
-  if (folderPath && (await fsPromises.stat(folderPath).catch(() => false))) {
-    await shell.openPath(folderPath);
+  if (folderPath) {
+    try {
+      await fsPromises.access(folderPath);
+      await shell.openPath(folderPath);
+    } catch (error) {
+      // If invalid or empty, open default downloads
+      await shell.openPath(app.getPath("downloads"));
+    }
   } else {
     // If invalid or empty, open default downloads
     await shell.openPath(app.getPath("downloads"));
@@ -429,17 +486,20 @@ createIpcHandler("open-specific-folder", async (event, folderPath) => {
 
 createIpcHandler("move-temp-files-to-downloads", async (event) => {
   // Placeholder implementation for now
-  event.sender.send("download-success", "Funcionalidade em desenvolvimento.");
+  event.sender.send("download-success", "Feature under development.");
 });
 
 createIpcHandler("clean-temp-files", async (event) => {
   try {
     const thumbDir = path.join(app.getPath("userData"), "thumbnails");
-    if (fs.existsSync(thumbDir)) {
+    try {
+      await fsPromises.access(thumbDir);
       const files = await fsPromises.readdir(thumbDir);
       for (const file of files) {
         await fsPromises.unlink(path.join(thumbDir, file)).catch(() => {});
       }
+    } catch (error) {
+      // Directory does not exist, nothing to do
     }
     event.sender.send("download-success", "Temp files (cache) cleaned.");
   } catch (error) {
@@ -479,33 +539,81 @@ function createWindow() {
 // ============================================================================
 // APP LIFECYCLE
 // ============================================================================
+
+// Register custom protocols as privileged for security and functionality
+// MUST be called before app.whenReady()
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    scheme: "ytdln-open",
+    privileges: {
+      standard: true,
+      secure: true,
+    },
+  },
+]);
+
 (async () => {
   try {
     await app.whenReady();
 
-    protocol.handle("media", (request) => {
+    protocol.handle("media", async (request) => {
       try {
         // Convert custom media: URL back to file: URL
         const fileUrl = request.url.replace(/^media:/, "file:");
         // Convert file: URL to absolute system path (handles Windows backslashes correctly)
         const filePath = url.fileURLToPath(fileUrl);
 
+        // Validate that the path is within allowed directories
+        // (downloads, userData, etc.) to prevent path traversal
+        const downloadsPath = app.getPath("downloads");
+        const userDataPath = app.getPath("userData");
+        const normalizedPath = path.normalize(filePath);
+        const normalizedDownloads = path.normalize(downloadsPath);
+        const normalizedUserData = path.normalize(userDataPath);
+
+        console.log(`[Media] Request: ${fileUrl}`);
+        console.log(`[Media] Normalized path: ${normalizedPath}`);
+        console.log(`[Media] Downloads: ${normalizedDownloads}`);
+        console.log(`[Media] UserData: ${normalizedUserData}`);
+
+        const isAllowed =
+          normalizedPath.startsWith(normalizedDownloads) ||
+          normalizedPath.startsWith(normalizedUserData);
+
+        if (!isAllowed) {
+          console.warn(`[Media] Access denied to file: ${filePath}`);
+          return new Response("Forbidden", { status: 403 });
+        }
+
+        // Check if file exists before fetching
+        await fsPromises.access(filePath);
+        console.log(`[Media] Serving file: ${filePath}`);
+
         return net.fetch(url.pathToFileURL(filePath).toString());
       } catch (e) {
-        console.error("Media protocol error:", e);
+        console.error("[Media] Protocol error:", e);
         return new Response("Not found", { status: 404 });
       }
     });
 
-    // Create window FIRST to show loading screen
+    // Create window on startup
     createWindow();
 
-    // No Windows/Linux, processamos a URL de inicialização se houver
+    // On Windows/Linux, process the startup URL if present
     const startUrl = process.argv.find((arg) =>
       arg.startsWith("ytdln-open://")
     );
     if (startUrl) {
-      // Pequeno delay para garantir que o renderer está pronto
+      // Small delay to ensure renderer is ready
       setTimeout(() => handleDeepLink(startUrl), 2000);
     }
 
@@ -528,15 +636,9 @@ function createWindow() {
       libraryManager.loadDownloadedFiles();
       await queueManager.init();
       server.setDownloader(videoDownloader);
-      server.init();
+      await server.init();
 
-      // Sincronizar eventos da fila com o servidor WS
-      ipcMain.on("queue:update", (event, data) => {
-        server.broadcast("QUEUE_UPDATE", data);
-      });
-      ipcMain.on("queue:progress", (event, data) => {
-        server.broadcast("QUEUE_PROGRESS", data);
-      });
+      console.log("[App] Initialization complete - Extension streaming mode active");
     } catch (initError) {
       console.error("Binary initialization failed:", initError);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -547,11 +649,16 @@ function createWindow() {
       }
     }
   } catch (error) {
-    console.error("Erro ao inicializar aplicação:", error);
+    console.error("Error initializing application:", error);
   }
 })();
 app.on("activate", function () {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+    mainWindow.show();
+  } else if (mainWindow && mainWindow.isVisible() === false) {
+    mainWindow.show();
+  }
 });
 
 app.on("window-all-closed", function () {
