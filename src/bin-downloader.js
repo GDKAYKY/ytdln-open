@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const tar = require("tar");
 
 const BIN_DIR = path.join(__dirname, "..", "bin");
 
@@ -36,46 +37,61 @@ async function downloadFile(url, outPath) {
     );
   }
 
-  const fileStream = fs.createWriteStream(outPath);
-  // O ReadableStream do fetch precisa ser convertido ou consumido corretamente
-  const reader = response.body.getReader();
+  return new Promise((resolve, reject) => {
+    const fileStream = fs.createWriteStream(outPath);
+    const reader = response.body.getReader();
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fileStream.write(Buffer.from(value));
-    }
-  } finally {
-    fileStream.end();
-    reader.releaseLock();
-  }
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          fileStream.write(Buffer.from(value));
+        }
+        fileStream.end();
+        fileStream.on('finish', resolve);
+        fileStream.on('error', reject);
+      } catch (error) {
+        fileStream.destroy();
+        reject(error);
+      }
+    })();
+  });
 }
 
 function extractZipWindows(zipPath, targetDir) {
-  // Try PowerShell first (Windows native)
-  const result = spawnSync(
-    "powershell",
-    [
-      "-NoProfile",
-      "-Command",
-      `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${targetDir}'`,
-    ],
-    { stdio: "ignore" }
-  );
+  // Use tar package for extraction with PowerShell fallback
+  return new Promise((resolve, reject) => {
+    // Try tar extraction first (works with .tar.gz, .tar.bz2, etc.)
+    tar
+      .extract({
+        file: zipPath,
+        cwd: targetDir,
+      })
+      .then(resolve)
+      .catch((error) => {
+        // Fallback to PowerShell for ZIP files
+        const result = spawnSync(
+          "powershell",
+          [
+            "-NoProfile",
+            "-Command",
+            `Expand-Archive -Force -Path '${zipPath}' -DestinationPath '${targetDir}'`,
+          ],
+          { encoding: "utf-8" }
+        );
 
-  // If PowerShell fails, try 7z (common on Windows)
-  if (result.error) {
-    const sevenZipResult = spawnSync("7z", ["x", zipPath, `-o${targetDir}`, "-y"], {
-      stdio: "ignore",
-    });
-
-    if (sevenZipResult.error) {
-      throw new Error(
-        `Failed to extract ZIP: PowerShell and 7z both unavailable. Original error: ${result.error.message}`
-      );
-    }
-  }
+        if (result.error || result.status !== 0) {
+          reject(
+            new Error(
+              `Failed to extract ZIP: ${result.error?.message || result.stderr || "Unknown error"}`
+            )
+          );
+        } else {
+          resolve();
+        }
+      });
+  });
 }
 
 function normalizeBinDirectory() {
@@ -152,19 +168,31 @@ class BinaryDownloader {
       await downloadFile(URLS["ffmpeg.zip"], zipPath);
 
       if (!fs.existsSync(zipPath) || fs.statSync(zipPath).size === 0) {
-        throw new Error("FFmpeg download failed");
+        throw new Error("FFmpeg download failed: file is empty or missing");
       }
 
-      extractZipWindows(zipPath, BIN_DIR);
+      try {
+        await extractZipWindows(zipPath, BIN_DIR);
+      } catch (error) {
+        fs.rmSync(zipPath, { force: true });
+        throw new Error(`FFmpeg extraction failed: ${error.message}`);
+      }
+
       normalizeBinDirectory();
 
-      if (
-        !fs.existsSync(binaryPaths.ffmpeg) ||
-        !fs.existsSync(binaryPaths.ffprobe) ||
-        !fs.existsSync(binaryPaths.ffplay)
-      ) {
-        throw new Error("FFmpeg extraction incomplete");
+      const missingBinaries = [
+        fs.existsSync(binaryPaths.ffmpeg) ? "" : "ffmpeg.exe",
+        fs.existsSync(binaryPaths.ffprobe) ? "" : "ffprobe.exe",
+        fs.existsSync(binaryPaths.ffplay) ? "" : "ffplay.exe",
+      ].filter(Boolean);
+
+      if (missingBinaries.length > 0) {
+        throw new Error(
+          `FFmpeg extraction incomplete. Missing: ${missingBinaries.join(", ")}`
+        );
       }
+
+      fs.rmSync(zipPath, { force: true });
     }
 
     cleanup();
