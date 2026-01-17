@@ -53,6 +53,7 @@ async function downloadFile(url, outPath) {
 }
 
 function extractZipWindows(zipPath, targetDir) {
+  // Try PowerShell first (Windows native)
   const result = spawnSync(
     "powershell",
     [
@@ -63,8 +64,17 @@ function extractZipWindows(zipPath, targetDir) {
     { stdio: "ignore" }
   );
 
+  // If PowerShell fails, try 7z (common on Windows)
   if (result.error) {
-    throw result.error;
+    const sevenZipResult = spawnSync("7z", ["x", zipPath, `-o${targetDir}`, "-y"], {
+      stdio: "ignore",
+    });
+
+    if (sevenZipResult.error) {
+      throw new Error(
+        `Failed to extract ZIP: PowerShell and 7z both unavailable. Original error: ${result.error.message}`
+      );
+    }
   }
 }
 

@@ -29,3 +29,13 @@ build/
 /bin
 /node_modules
 /out
+coverage/
+
+# Extension keys (NUNCA fazer commit de chaves privadas!)
+extension-keys/
+*.pem
+*.key
+
+# Release temporários
+releases/temp-crx/
+/postman

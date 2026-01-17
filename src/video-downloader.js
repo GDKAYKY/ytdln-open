@@ -1,10 +1,17 @@
+/* @ts-check */
+/* eslint-disable no-undef */
 const { app } = require("electron");
-const path = require("node:path");
-const os = require("node:os");
+const { join } = require("node:path");
 const { spawn } = require("node:child_process");
+const { readFileSync } = require("node:fs");
 const BinaryDownloader = require("./bin-downloader");
 
 class VideoDownloader {
+  constructor() {
+    this.binaries = null;
+    this.settings = null;
+  }
+
   /**
    * Initializes required binaries.
    * Must be called before any download.
@@ -21,7 +28,6 @@ class VideoDownloader {
       const infoArgs = ["--dump-json", videoUrl];
       const ytdlpProcess = spawn(ytdlp, infoArgs, {
         stdio: ["ignore", "pipe", "pipe"],
-        // Não definir cwd para evitar problemas com caminhos relativos
       });
       let infoJson = "";
 
@@ -55,85 +61,75 @@ class VideoDownloader {
     });
   }
 
-  buildYtdlpArgs(settings, videoUrl, options = {}) {
-    const { ffmpeg } = this.binaries;
-    const { useStdout = false, acodec = "" } = options;
-    const args = ["--progress", "--newline"];
+  loadSettings(settings) {
+    if (!settings || Object.keys(settings).length === 0) {
+      const defaultConfigPath = join(__dirname, '..', 'config', 'ytdlp-defaults.json');
+      return JSON.parse(readFileSync(defaultConfigPath, 'utf-8'));
+    }
+    return settings;
+  }
 
-    // 1. Definição de Saída
+  addOutputArgs(args, useStdout, ffmpeg) {
     if (useStdout) {
       args.push("-o", "-");
     } else {
-      args.push("-o", path.join(app.getPath("downloads"), "%(title)s.%(ext)s"));
+      args.push("-o", join(app.getPath("downloads"), "%(title)s.%(ext)s"));
     }
+    args.push("--merge-output-format", useStdout ? "mp4" : this.settings.outputFormat || "mp4");
+    args.push("--ffmpeg-location", ffmpeg);
+  }
 
-    // 2. Binários e Formatos
-    const outFormat = useStdout ? "mp4" : settings.outputFormat || "mp4";
-    // Only pass ffmpeg location when NOT using stdout (stdout doesn't use ffmpeg for merging)
-    if (!useStdout) {
-      args.push("--ffmpeg-location", ffmpeg, "--merge-output-format", outFormat);
+  getQualityFormat(quality, useStdout) {
+    if (quality === "worst") return "worst";
+    if (quality === "best") {
+      return useStdout 
+        ? "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
+        : "bestvideo+bestaudio/best";
     }
+    const height = quality.replace("p", "");
+    return useStdout
+      ? `best[height<=${height}][ext=mp4]/bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${height}]`
+      : `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`;
+  }
 
-    // 3. Qualidade - MESMO PARA STREAMING E DOWNLOAD
-    if (settings.quality && settings.quality !== "best") {
-      if (settings.quality === "worst") {
-        args.push("-f", "worst");
-      } else {
-        const height = settings.quality.replace("p", "");
-        // Para streaming, adicionar filtro de extensão MP4
-        if (useStdout) {
-          args.push(
-            "-f",
-            `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${height}][ext=mp4]/best`
-          );
-        } else {
-          args.push(
-            "-f",
-            `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`
-          );
-        }
-      }
+  addQualityArgs(args, quality, useStdout) {
+    if (quality) {
+      args.push("-f", this.getQualityFormat(quality, useStdout));
     }
+  }
 
-    // 3.5 JavaScript Runtime - usar Node.js do Electron
-    args.push("--js-runtime", "nodejs");
-
-    // 4. Performance e Retentativa - IDÊNTICO PARA AMBOS
-    args.push(
-      "--concurrent-fragments",
-      (settings.concurrentFragments || 8).toString()
-    );
+  addPerformanceArgs(args, settings, useStdout) {
+    args.push("--js-runtime", "node");
+    args.push("--concurrent-fragments", (settings.concurrentFragments || 8).toString());
     args.push("--socket-timeout", (settings.socketTimeout || 30).toString());
     args.push("--retries", (settings.retries || 5).toString());
     args.push("--fragment-retries", (settings.fragmentRetries || 10).toString());
-    args.push("--skip-unavailable-fragments"); // Skip fragments that can't be downloaded
+    args.push("--extractor-retries", (settings.extractorRetries || 3).toString());
+    args.push("--skip-unavailable-fragments");
     
-    // Para streaming, adicionar delay para evitar bloqueios
     if (useStdout) {
-      args.push("--sleep-requests", "0.5"); // 500ms entre requisições
-      args.push("--sleep-interval", "1"); // 1s entre fragmentos
-      args.push("--no-part"); // Não usar arquivo .part para stdout
+      args.push("--sleep-requests", "0.5");
+      args.push("--sleep-interval", "1");
+      args.push("--no-part");
     }
+  }
 
-    // 5. Metadados e Subs (skip para streaming)
+  addMetadataArgs(args, settings, useStdout) {
     if (!useStdout) {
       if (settings.embedSubs) args.push("--embed-subs");
       if (settings.writeInfoJson) args.push("--write-info-json");
       if (settings.writeDescription) args.push("--write-description");
-      // SEMPRE salvar thumbnail (será movida para cache depois)
       args.push("--write-thumbnail");
     }
+  }
 
-    // 6. Headers / Proxy - IDÊNTICO PARA AMBOS
-    // Usar User-Agent de navegador real
+  addHeaderArgs(args, settings) {
     const userAgent = settings.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-    
     args.push("--user-agent", userAgent);
     if (settings.referer) args.push("--referer", settings.referer);
     if (settings.noCheckCertificate) args.push("--no-check-certificate");
     if (settings.ignoreErrors) args.push("--ignore-errors");
     
-    // Headers adicionais para evitar bloqueios (importante para ambos download e streaming)
     args.push("--add-header", "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7");
     args.push("--add-header", "Accept-Encoding: gzip, deflate, br");
     args.push("--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
@@ -141,29 +137,38 @@ class VideoDownloader {
     args.push("--add-header", "Sec-Fetch-Mode: navigate");
     args.push("--add-header", "Sec-Fetch-Site: none");
     args.push("--add-header", "Upgrade-Insecure-Requests: 1");
+  }
 
-    // 7. Lógica de Post-Processing (Mesclagem de Áudio/Vídeo)
-    let ppArgs = [];
-
-    // Conversão de áudio se solicitado
+  addPostProcessingArgs(args, settings, acodec) {
     const targetFormat = settings.audioFormat;
-    if (targetFormat && targetFormat !== "best") {
-      const codecMap = {
-        mp3: { check: "mp3", ffmpeg: "libmp3lame" },
-        aac: { check: "mp4a", ffmpeg: "aac" },
-        opus: { check: "opus", ffmpeg: "libopus" },
-      };
-      const target = codecMap[targetFormat];
-      if (target && acodec && !acodec.startsWith(target.check)) {
-        ppArgs.push(`-c:v copy -c:a ${target.ffmpeg}`);
-      }
-    }
+    if (!targetFormat || targetFormat === "best") return;
 
-    if (ppArgs.length > 0) {
-      args.push("--postprocessor-args", `ffmpeg:${ppArgs.join(" ")}`);
+    const codecMap = {
+      mp3: { check: "mp3", ffmpeg: "libmp3lame" },
+      aac: { check: "mp4a", ffmpeg: "aac" },
+      opus: { check: "opus", ffmpeg: "libopus" },
+    };
+    const target = codecMap[targetFormat];
+    if (target && acodec && !acodec.startsWith(target.check)) {
+      args.push("--postprocessor-args", `ffmpeg:-c:v copy -c:a ${target.ffmpeg}`);
     }
+  }
 
-    // 8. URL deve ser sempre o último argumento
+  buildYtdlpArgs(settings, videoUrl, options = {}) {
+    const { ffmpeg } = this.binaries;
+    const { useStdout = false, acodec = "" } = options;
+    
+    settings = this.loadSettings(settings);
+    this.settings = settings;
+    
+    const args = ["--progress", "--newline"];
+    this.addOutputArgs(args, useStdout, ffmpeg);
+    this.addQualityArgs(args, settings.quality, useStdout);
+    this.addPerformanceArgs(args, settings, useStdout);
+    this.addMetadataArgs(args, settings, useStdout);
+    this.addHeaderArgs(args, settings);
+    this.addPostProcessingArgs(args, settings, acodec);
+    
     args.push(videoUrl);
     return args;
   }
@@ -194,10 +199,9 @@ class VideoDownloader {
     return new Promise((resolve, reject) => {
       const process = spawn(ytdlp, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        // Não definir cwd para evitar problemas com caminhos relativos
       });
 
-      // Necessário para o QueueManager conseguir cancelar o processo
+      // Required for QueueManager to be able to cancel the process
       if (callbacks.onSpawn) callbacks.onSpawn(process);
 
       let detectedPath = null;
@@ -242,80 +246,34 @@ class VideoDownloader {
       throw new Error("VideoDownloader not initialized. Call init() first.");
     }
 
-    const { ytdlp, ffmpeg } = this.binaries;
+    const { ytdlp } = this.binaries;
     const ytdlpArgs = this.buildYtdlpArgs(settings, videoUrl, {
       useStdout: true,
     });
 
-    console.log("[Stream] Iniciando Double-Pipe: yt-dlp | ffmpeg");
+    console.log("[Stream] Starting stream with yt-dlp (using internal ffmpeg downloader)");
     console.log("[Stream] yt-dlp args:", ytdlpArgs);
     
     const downloader = spawn(ytdlp, ytdlpArgs, {
       stdio: ["ignore", "pipe", "pipe"],
-      // Não definir cwd para evitar problemas com caminhos relativos
     });
 
-    const muxer = spawn(
-      ffmpeg,
-      [
-        "-i",
-        "pipe:0",
-        "-c:v",
-        "copy",
-        "-c:a",
-        "copy",
-        "-f",
-        "mpegts",
-        "-loglevel",
-        "info",
-        "pipe:1",
-      ],
-      { 
-        stdio: ["pipe", "pipe", "pipe"],
-        // Não definir cwd para evitar problemas com caminhos relativos
-      }
-    );
-
-    // Tratamento de erro de spawn
+    // Handle spawn errors
     downloader.on("error", (err) => {
-      console.error("[Stream] Erro no yt-dlp:", err);
+      console.error("[Stream] yt-dlp error:", err);
+      if (!res.destroyed) res.destroy();
     });
 
-    muxer.on("error", (err) => {
-      console.error("[Stream] Erro no ffmpeg:", err);
-    });
+    // Direct pipe from yt-dlp to HTTP response
+    downloader.stdout.pipe(res);
 
-    // Encanamento com tratamento de erro
-    downloader.stdout.on("error", (err) => {
-      console.error("[Stream] Erro no stdout do yt-dlp:", err);
-    });
-
-    muxer.stdin.on("error", (err) => {
-      if (err.code !== "EPIPE") {
-        console.error("[Stream] Erro no stdin do ffmpeg:", err);
-      }
-    });
-
-    downloader.stdout.pipe(muxer.stdin);
-    muxer.stdout.pipe(res);
-
-    // Logs detalhados
-    let ytdlpBytes = 0;
-    let ffmpegBytes = 0;
-    let ytdlpEnded = false;
-    let ffmpegEnded = false;
+    // Detailed logging
+    let bytesStreamed = 0;
 
     downloader.stdout.on("data", (chunk) => {
-      ytdlpBytes += chunk.length;
-      if (ytdlpBytes % (10 * 1024 * 1024) === 0) {
-        console.log(`[Stream] yt-dlp enviou: ${(ytdlpBytes / 1024 / 1024).toFixed(2)} MB`);
-      }
-    });
-
-    muxer.stdout.on("data", (chunk) => {
-      ffmpegBytes += chunk.length;
-      if (ffmpegBytes % (10 * 1024 * 1024) === 0) {
-        console.log(`[Stream] ffmpeg enviou: ${(ffmpegBytes / 1024 / 1024).toFixed(2)} MB`);
+      bytesStreamed += chunk.length;
+      if (bytesStreamed % (10 * 1024 * 1024) === 0) {
+        console.log(`[Stream] Sent: ${(bytesStreamed / 1024 / 1024).toFixed(2)} MB`);
       }
     });
 
@@ -323,37 +281,24 @@ class VideoDownloader {
       const msg = d.toString().trim();
       if (msg) console.log(`[yt-dlp] ${msg}`);
     });
-    
-    muxer.stderr.on("data", (d) => {
-      const msg = d.toString().trim();
-      if (msg) console.error(`[ffmpeg] ${msg}`);
-    });
 
     downloader.stdout.on("end", () => {
-      ytdlpEnded = true;
-      console.log(`[Stream] yt-dlp terminou. Total: ${(ytdlpBytes / 1024 / 1024).toFixed(2)} MB`);
-    });
-
-    muxer.stdout.on("end", () => {
-      ffmpegEnded = true;
-      console.log(`[Stream] ffmpeg terminou. Total: ${(ffmpegBytes / 1024 / 1024).toFixed(2)} MB`);
+      console.log(`[Stream] yt-dlp finished. Total: ${(bytesStreamed / 1024 / 1024).toFixed(2)} MB`);
     });
 
     return new Promise((resolve, reject) => {
       let resolved = false;
       
       const cleanup = () => {
-        [downloader, muxer].forEach((p) => {
-          if (p && p.exitCode === null) {
-            p.kill("SIGKILL");
-          }
-        });
+        if (downloader && downloader.exitCode === null) {
+          downloader.kill("SIGKILL");
+        }
       };
       
       const handleResolve = () => {
         if (!resolved) {
           resolved = true;
-          console.log(`[Stream] Resolvido. yt-dlp: ${ytdlpEnded}, ffmpeg: ${ffmpegEnded}`);
+          console.log(`[Stream] Resolved`);
           cleanup();
           resolve();
         }
@@ -362,7 +307,7 @@ class VideoDownloader {
       const handleReject = (err) => {
         if (!resolved) {
           resolved = true;
-          console.error(`[Stream] Rejeitado:`, err);
+          console.error(`[Stream] Rejected:`, err);
           cleanup();
           if (err && (err.code === "EPIPE" || err.code === "ECONNRESET")) {
             resolve();
@@ -374,39 +319,27 @@ class VideoDownloader {
       
       res.on("error", (err) => {
         if (err.code !== "EPIPE" && err.code !== "ECONNRESET") {
-          console.error("[Stream] Erro na resposta HTTP:", err);
+          console.error("[Stream] HTTP response error:", err);
         }
         handleReject(err);
       });
       
       res.on("close", () => {
-        console.log("[Stream] Cliente fechou a conexão");
+        console.log("[Stream] Client closed connection");
         handleResolve();
       });
       
       downloader.on("error", (err) => {
-        console.error("[Stream] Erro no yt-dlp:", err);
-        handleReject(err);
-      });
-      
-      muxer.on("error", (err) => {
-        console.error("[Stream] Erro no ffmpeg:", err);
+        console.error("[Stream] yt-dlp error:", err);
         handleReject(err);
       });
       
       downloader.on("close", (code) => {
-        console.log(`[Stream] yt-dlp fechou com código: ${code}`);
+        console.log(`[Stream] yt-dlp closed with code: ${code}`);
         if (code !== 0 && code !== null) {
-          handleReject(new Error(`yt-dlp falhou com código ${code}`));
-        }
-      });
-      
-      muxer.on("close", (code) => {
-        console.log(`[Stream] ffmpeg fechou com código: ${code}`);
-        if (code === 0 || code === null || muxer.killed) {
-          handleResolve();
+          handleReject(new Error(`yt-dlp failed with code ${code}`));
         } else {
-          handleReject(new Error(`ffmpeg falhou com código ${code}`));
+          handleResolve();
         }
       });
     });

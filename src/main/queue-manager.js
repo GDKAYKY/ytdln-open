@@ -17,27 +17,32 @@ class QueueManager {
     await this.videoDownloader.init();
     this.isInitialized = true;
     this.setupIpc();
-    console.log("[Queue] Gerenciador de fila inicializado.");
+    console.log("[Queue] Queue manager initialized.");
   }
 
   setupIpc() {
     ipcMain.on("queue:add", async (event, { url, settings }) => {
+      console.log("[Queue] queue:add received:", { url, settings });
       const job = this.addJob(url, settings);
+      console.log("[Queue] Job added:", job.id);
       this.broadcast("queue:update", this.getQueueState());
       this.processNext();
     });
 
     ipcMain.on("queue:remove", (event, { id }) => {
+      console.log("[Queue] queue:remove received:", id);
       this.cancelJob(id);
       this.broadcast("queue:update", this.getQueueState());
     });
 
     ipcMain.handle("queue:get-state", () => {
+      console.log("[Queue] queue:get-state requested");
       return this.getQueueState();
     });
 
     // Listener para pedidos internos (ex: do server.js)
     ipcMain.on("queue:request-state", () => {
+      console.log("[Queue] queue:request-state received");
       this.broadcast("queue:update", this.getQueueState());
     });
   }
@@ -69,9 +74,9 @@ class QueueManager {
       if (proc) {
         try {
           proc.kill();
-          console.log(`[Queue] Processo do job ${id} encerrado.`);
+          console.log(`[Queue] Job process ${id} terminated.`);
         } catch (e) {
-          console.error(`[Queue] Erro ao encerrar processo do job ${id}:`, e);
+          console.error(`[Queue] Error terminating job process ${id}:`, e);
         }
       }
     }
@@ -108,16 +113,26 @@ class QueueManager {
     const runningCount = this.queue.filter(
       (j) => j.status === "RUNNING"
     ).length;
-    if (runningCount >= this.concurrency) return;
+    console.log(`[Queue] processNext: running=${runningCount}, concurrency=${this.concurrency}`);
+    
+    if (runningCount >= this.concurrency) {
+      console.log("[Queue] Max concurrency reached, waiting...");
+      return;
+    }
 
     const nextJob = this.queue.find((j) => j.status === "PENDING");
-    if (!nextJob) return;
+    if (!nextJob) {
+      console.log("[Queue] No pending jobs");
+      return;
+    }
 
+    console.log(`[Queue] Processing job ${nextJob.id}: ${nextJob.url}`);
     await this.runJob(nextJob);
   }
 
   async runJob(job) {
     job.status = "RUNNING";
+    console.log(`[Queue] Running job ${job.id}`);
     this.broadcast("queue:update", this.getQueueState());
 
     try {
@@ -132,14 +147,17 @@ class QueueManager {
             });
           },
           onError: (err) => {
+            console.error(`[Queue] Job ${job.id} error:`, err);
             job.error = err;
           },
           // We'll need to pass something to kill it
           onSpawn: (proc) => {
+            console.log(`[Queue] Job ${job.id} spawned process`);
             this.activeJobs.set(job.id, proc);
           },
         })
         .then(async (result) => {
+          console.log(`[Queue] Job ${job.id} completed:`, result);
           job.status = "DONE";
           this.activeJobs.delete(job.id);
 
